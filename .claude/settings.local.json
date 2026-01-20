@@ -15,7 +15,9 @@
       "Bash(unzip:*)",
       "Bash(do sed -i '' '/^\\*Next:/d' \"$file\")",
       "Bash(git add:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(gh pr create:*)",
+      "Bash(gh repo view:*)"
     ],
     "deny": [],
     "ask": []
