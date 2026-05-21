@@ -1,0 +1,601 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="stylesheet" href="../colvmn/style.css">
+<title>Concurrency – Io</title>
+  <link rel="alternate" type="text/plain" title="llms.txt" href="/llms.txt">
+  <meta name="description" content="Coroutines, actors, and futures for cooperative and message-passing concurrency.">
+</head>
+<body>
+<div class="page loaded"><div class="header"><div><h1>Concurrency</h1><a class="back-link" href="../index.html">&larr; The Io Programming Language</a></div><a class="brand" href="../index.html">Io</a></div><p class="intro">Coroutines, actors, and futures for cooperative and message-passing concurrency.</p><nav class="toc"><ul><li><a href="#coroutines-cooperative-multitasking">Coroutines: Cooperative Multitasking</a></li><li><a href="#creating-and-managing-coroutines">Creating and Managing Coroutines</a></li><li><a href="#actors-message-passing-concurrency">Actors: Message-Passing Concurrency</a></li><li><a href="#futures-and-promises">Futures and Promises</a></li><li><a href="#channels-for-communication">Channels for Communication</a></li><li><a href="#synchronization-primitives">Synchronization Primitives</a></li><li><a href="#concurrent-collections">Concurrent Collections</a></li><li><a href="#worker-pool-pattern">Worker Pool Pattern</a></li><li><a href="#asyncawait-pattern">Async/Await Pattern</a></li><li><a href="#parallel-map">Parallel Map</a></li><li><a href="#deadlock-detection">Deadlock Detection</a></li><li><a href="#event-loop">Event Loop</a></li><li><a href="#common-patterns">Common Patterns</a></li><li><a href="#performance-considerations">Performance Considerations</a></li><li><a href="#exercises">Exercises</a></li><li><a href="#real-world-example-web-scraper">Real-World Example: Web Scraper</a></li><li><a href="#conclusion">Conclusion</a></li></ul></nav><div class="section"><div class="section-body"><p>Io provides powerful concurrency primitives: coroutines for cooperative multitasking, actors for message-passing concurrency, and futures for asynchronous computation. This chapter explores these mechanisms and how they enable concurrent and parallel programming in Io.</p></div></div><h2 id="coroutines-cooperative-multitasking">Coroutines: Cooperative Multitasking</h2><div class="section"><div class="section-body"><p>Coroutines are the foundation of Io's concurrency model. They're lightweight threads that yield control cooperatively:</p><pre><code>// Create a coroutine
+coro := coroutine(
+    5 repeat(i,
+        ("Coroutine: " .. i) println
+        yield  // Give control back
+    )
+)
+
+// Run it
+5 repeat(
+    "Main" println
+    coro resume  // Resume the coroutine
+)
+// Output interleaves Main and Coroutine messages</code></pre><p>Compare with threads in other languages:</p><pre><code># Python with threads (preemptive)
+import threading
+def worker():
+    for i in range(5):
+        print(f"Thread: {i}")
+        # No explicit yield needed
+
+# Python with async (cooperative)
+async def worker():
+    for i in range(5):
+        print(f"Coroutine: {i}")
+        await asyncio.sleep(0)  # Explicit yield</code></pre></div></div><h2 id="creating-and-managing-coroutines">Creating and Managing Coroutines</h2><div class="section"><div class="section-body"><pre><code>// Basic coroutine creation
+coro := Coroutine clone
+coro setRunMessage(message(
+    "Running in coroutine" println
+    self  // Return value
+))
+coro resume println  // "Running in coroutine", then returns self
+
+// Using @ for async execution
+future := obj @method(arg)  // Runs method in new coroutine
+result := future resolve     // Wait for result
+
+// Coroutine with arguments
+producer := coroutine(
+    10 repeat(i,
+        yield(i * i)  // Yield a value
+    )
+)
+
+5 repeat(
+    producer resume println  // 0, 1, 4, 9, 16
+)</code></pre></div></div><h2 id="actors-message-passing-concurrency">Actors: Message-Passing Concurrency</h2><div class="section"><div class="section-body"><p>Actors are objects that process messages asynchronously in their own coroutine:</p><pre><code>// Create an actor
+Counter := Object clone
+Counter count := 0
+Counter increment := method(
+    count = count + 1
+    count
+)
+
+// Make it an actor
+counter := Counter clone
+counterActor := counter @  // @ makes it an actor
+
+// Send messages asynchronously
+future1 := counterActor increment
+future2 := counterActor increment
+future3 := counterActor increment
+
+// Get results
+future1 resolve println  // 1
+future2 resolve println  // 2
+future3 resolve println  // 3</code></pre><p>This is similar to Erlang's actor model:</p><pre><code>% Erlang
+counter(Count) -&gt;
+    receive
+        {increment, From} -&gt;
+            From ! Count + 1,
+            counter(Count + 1)
+    end.</code></pre></div></div><h2 id="futures-and-promises">Futures and Promises</h2><div class="section"><div class="section-body"><p>Futures represent values that will be available later:</p><pre><code>// Create a future manually
+future := Future clone
+
+// In another coroutine, fulfill it
+@(
+    wait(1)  // Simulate work
+    future setResult(42)
+)
+
+// Wait for result
+"Waiting..." println
+result := future resolve
+("Got result: " .. result) println  // Got result: 42
+
+// Futures from async calls
+slowOperation := method(n,
+    wait(n)
+    n * 2
+)
+
+f := self @slowOperation(2)
+"Doing other work..." println
+result := f resolve
+result println  // 4</code></pre></div></div><h2 id="channels-for-communication">Channels for Communication</h2><div class="section"><div class="section-body"><p>Implement Go-style channels:</p><pre><code>Channel := Object clone
+Channel init := method(
+    self queue := list()
+    self waiters := list()
+    self
+)
+
+Channel send := method(value,
+    if(waiters size &gt; 0,
+        waiter := waiters removeFirst
+        waiter resume(value),
+        queue append(value)
+    )
+)
+
+Channel receive := method(
+    if(queue size &gt; 0,
+        queue removeFirst,
+        waiters append(Coroutine currentCoroutine)
+        Coroutine currentCoroutine pause
+    )
+)
+
+// Usage
+ch := Channel clone init
+
+// Producer
+@(
+    5 repeat(i,
+        ch send(i * i)
+        wait(0.1)
+    )
+)
+
+// Consumer
+@(
+    5 repeat(
+        value := ch receive
+        ("Received: " .. value) println
+    )
+)
+
+wait(1)  // Let them run</code></pre></div></div><h2 id="synchronization-primitives">Synchronization Primitives</h2><div class="section"><div class="section-body"><h3 id="mutex-mutual-exclusion">Mutex (Mutual Exclusion)</h3><pre><code>Mutex := Object clone
+Mutex locked := false
+Mutex waitQueue := list()
+
+Mutex lock := method(
+    while(locked,
+        waitQueue append(Coroutine currentCoroutine)
+        Coroutine currentCoroutine pause
+    )
+    locked = true
+)
+
+Mutex unlock := method(
+    locked = false
+    if(waitQueue size &gt; 0,
+        waiter := waitQueue removeFirst
+        waiter resume
+    )
+)
+
+Mutex synchronize := method(block,
+    lock
+    e := try(result := block call)
+    unlock
+    if(e, e raise, result)
+)
+
+// Usage
+sharedCounter := 0
+mutex := Mutex clone
+
+10 repeat(
+    @(
+        mutex synchronize(
+            temp := sharedCounter
+            yield  // Simulate race condition
+            sharedCounter = temp + 1
+        )
+    )
+)
+
+wait(0.5)
+sharedCounter println  // 10 (without mutex would be unpredictable)</code></pre><h3 id="semaphore">Semaphore</h3><pre><code>Semaphore := Object clone
+Semaphore init := method(permits,
+    self permits := permits
+    self waitQueue := list()
+    self
+)
+
+Semaphore acquire := method(
+    while(permits &lt;= 0,
+        waitQueue append(Coroutine currentCoroutine)
+        Coroutine currentCoroutine pause
+    )
+    permits = permits - 1
+)
+
+Semaphore release := method(
+    permits = permits + 1
+    if(waitQueue size &gt; 0,
+        waiter := waitQueue removeFirst
+        waiter resume
+    )
+)
+
+// Usage: Limit concurrent connections
+connectionPool := Semaphore clone init(3)
+
+10 repeat(i,
+    @(
+        connectionPool acquire
+        ("Connection " .. i .. " started") println
+        wait(Random value)
+        ("Connection " .. i .. " finished") println
+        connectionPool release
+    )
+)
+
+wait(3)</code></pre></div></div><h2 id="concurrent-collections">Concurrent Collections</h2><div class="section"><div class="section-body"><pre><code>// Thread-safe list
+ConcurrentList := List clone
+ConcurrentList mutex := Mutex clone
+
+ConcurrentList append := method(item,
+    mutex synchronize(resend(item))
+)
+
+ConcurrentList at := method(index,
+    mutex synchronize(resend(index))
+)
+
+ConcurrentList size := method(
+    mutex synchronize(resend)
+)
+
+// Usage
+list := ConcurrentList clone
+
+10 repeat(i,
+    @(list append(i))
+)
+
+wait(0.1)
+list size println  // 10</code></pre></div></div><h2 id="worker-pool-pattern">Worker Pool Pattern</h2><div class="section"><div class="section-body"><pre><code>WorkerPool := Object clone
+WorkerPool init := method(workerCount,
+    self workers := list()
+    self taskQueue := Channel clone init
+    self results := Channel clone init
+    
+    workerCount repeat(
+        worker := @(
+            loop(
+                task := taskQueue receive
+                if(task isNil, break)  // Poison pill
+                
+                result := task call
+                results send(result)
+            )
+        )
+        workers append(worker)
+    )
+    
+    self
+)
+
+WorkerPool submit := method(task,
+    taskQueue send(task)
+)
+
+WorkerPool shutdown := method(
+    workers size repeat(taskQueue send(nil))
+)
+
+WorkerPool getResult := method(
+    results receive
+)
+
+// Usage
+pool := WorkerPool clone init(4)
+
+// Submit tasks
+10 repeat(i,
+    pool submit(block(
+        wait(Random value * 0.1)
+        i * i
+    ))
+)
+
+// Collect results
+results := list()
+10 repeat(
+    results append(pool getResult)
+)
+
+pool shutdown
+results println</code></pre></div></div><h2 id="asyncawait-pattern">Async/Await Pattern</h2><div class="section"><div class="section-body"><pre><code>// Implement async/await style
+Object async := method(
+    future := Future clone
+    
+    @(
+        e := try(result := call activated doMessage(call message, call sender))
+        if(e,
+            future setException(e),
+            future setResult(result)
+        )
+    )
+    
+    future
+)
+
+Object await := method(future,
+    future resolve
+)
+
+// Usage
+fetchData := async method(url,
+    wait(1)  // Simulate network delay
+    "Data from " .. url
+)
+
+processData := async method(
+    data1 := await(fetchData("api/users"))
+    data2 := await(fetchData("api/posts"))
+    data1 .. " + " .. data2
+)
+
+result := await(processData)
+result println  // Data from api/users + Data from api/posts</code></pre></div></div><h2 id="parallel-map">Parallel Map</h2><div class="section"><div class="section-body"><pre><code>List parallelMap := method(block,
+    futures := self map(item,
+        self @(block call(item))
+    )
+    
+    futures map(resolve)
+)
+
+// Usage
+numbers := list(1, 2, 3, 4, 5)
+
+// Sequential map
+time(
+    sequential := numbers map(n,
+        wait(0.1)
+        n * n
+    )
+)
+
+// Parallel map
+time(
+    parallel := numbers parallelMap(n,
+        wait(0.1)
+        n * n
+    )
+)
+
+sequential println  // list(1, 4, 9, 16, 25)
+parallel println    // list(1, 4, 9, 16, 25) but faster</code></pre></div></div><h2 id="deadlock-detection">Deadlock Detection</h2><div class="section"><div class="section-body"><pre><code>DeadlockDetector := Object clone
+DeadlockDetector init := method(
+    self resources := Map clone
+    self waitGraph := Map clone
+    self
+)
+
+DeadlockDetector requestResource := method(coroutine, resource,
+    // Add to wait graph
+    if(resources hasKey(resource),
+        owner := resources at(resource)
+        if(owner != coroutine,
+            waitGraph atPut(coroutine, resource)
+            
+            // Check for cycle
+            if(hasCycle(coroutine),
+                Exception raise("Deadlock detected!")
+            )
+        )
+    )
+)
+
+DeadlockDetector hasCycle := method(start,
+    // Simplified cycle detection
+    visited := list()
+    current := start
+    
+    while(waitGraph hasKey(current),
+        if(visited contains(current), return true)
+        visited append(current)
+        
+        resource := waitGraph at(current)
+        if(resources hasKey(resource),
+            current = resources at(resource)
+        ,
+            break
+        )
+    )
+    
+    false
+)</code></pre></div></div><h2 id="event-loop">Event Loop</h2><div class="section"><div class="section-body"><pre><code>EventLoop := Object clone
+EventLoop init := method(
+    self events := list()
+    self running := true
+    self
+)
+
+EventLoop schedule := method(delay, block,
+    events append(list(Date now + delay, block))
+    events sortInPlaceBy(block(e, e at(0)))
+)
+
+EventLoop run := method(
+    while(running and events size &gt; 0,
+        now := Date now
+        
+        while(events size &gt; 0 and events first at(0) &lt;= now,
+            event := events removeFirst
+            event at(1) @call
+        )
+        
+        if(events size &gt; 0,
+            wait((events first at(0) - now) max(0))
+        )
+    )
+)
+
+EventLoop stop := method(running = false)
+
+// Usage
+loop := EventLoop clone init
+
+loop schedule(0.1, block("First" println))
+loop schedule(0.2, block("Second" println))
+loop schedule(0.15, block("Between" println))
+
+loop run</code></pre></div></div><h2 id="common-patterns">Common Patterns</h2><div class="section"><div class="section-body"><h3 id="producer-consumer">Producer-Consumer</h3><pre><code>Buffer := Object clone
+Buffer init := method(capacity,
+    self items := list()
+    self capacity := capacity
+    self notFull := Semaphore clone init(capacity)
+    self notEmpty := Semaphore clone init(0)
+    self mutex := Mutex clone
+    self
+)
+
+Buffer put := method(item,
+    notFull acquire
+    mutex synchronize(items append(item))
+    notEmpty release
+)
+
+Buffer get := method(
+    notEmpty acquire
+    item := mutex synchronize(items removeFirst)
+    notFull release
+    item
+)
+
+// Usage
+buffer := Buffer clone init(5)
+
+// Producer
+@(
+    10 repeat(i,
+        ("Producing " .. i) println
+        buffer put(i)
+        wait(Random value * 0.1)
+    )
+)
+
+// Consumer
+@(
+    10 repeat(
+        item := buffer get
+        ("Consumed " .. item) println
+        wait(Random value * 0.2)
+    )
+)
+
+wait(3)</code></pre><h3 id="fork-join">Fork-Join</h3><pre><code>Object forkJoin := method(tasks,
+    futures := tasks map(task,
+        @(task call)
+    )
+    
+    futures map(resolve)
+)
+
+// Parallel quicksort
+quicksort := method(list,
+    if(list size &lt;= 1, return list)
+    
+    pivot := list at(list size / 2)
+    
+    results := forkJoin(list(
+        block(list select(x, x &lt; pivot) quicksort),
+        block(list select(x, x == pivot)),
+        block(list select(x, x &gt; pivot) quicksort)
+    ))
+    
+    results at(0) appendSeq(results at(1)) appendSeq(results at(2))
+)
+
+sorted := quicksort(list(3, 1, 4, 1, 5, 9, 2, 6))
+sorted println  // list(1, 1, 2, 3, 4, 5, 6, 9)</code></pre></div></div><h2 id="performance-considerations">Performance Considerations</h2><div class="section"><div class="section-body"><pre><code>// Coroutines are lightweight
+time(
+    coroutines := list()
+    1000 repeat(i,
+        coroutines append(@(i * i))
+    )
+    coroutines map(resolve)
+)
+
+// But context switching has overhead
+benchmarkConcurrency := method(taskCount, taskWork,
+    // Sequential
+    seqTime := time(
+        taskCount repeat(i, taskWork call(i))
+    )
+    
+    // Concurrent
+    concTime := time(
+        futures := list()
+        taskCount repeat(i,
+            futures append(@(taskWork call(i)))
+        )
+        futures map(resolve)
+    )
+    
+    ("Sequential: " .. seqTime) println
+    ("Concurrent: " .. concTime) println
+    ("Speedup: " .. (seqTime / concTime)) println
+)
+
+// Light work - concurrency overhead dominates
+benchmarkConcurrency(100, block(i, i * i))
+
+// Heavy work - concurrency helps
+benchmarkConcurrency(10, block(i,
+    sum := 0
+    10000 repeat(j, sum = sum + j)
+    sum
+))</code></pre></div></div><h2 id="exercises">Exercises</h2><div class="section"><div class="section-body"><ol><li><strong>Rate Limiter</strong>: Implement a rate limiter that allows N operations per second.</li><li><strong>Parallel Reduce</strong>: Create a parallel version of reduce that divides work among workers.</li><li><strong>Actor Supervisor</strong>: Build a supervisor that restarts failed actors.</li><li><strong>CSP Channels</strong>: Implement Communicating Sequential Processes with select statement.</li><li><strong>STM</strong>: Implement Software Transactional Memory for conflict-free concurrent updates.</li></ol></div></div><h2 id="real-world-example-web-scraper">Real-World Example: Web Scraper</h2><div class="section"><div class="section-body"><pre><code>WebScraper := Object clone
+WebScraper init := method(maxConcurrent,
+    self semaphore := Semaphore clone init(maxConcurrent)
+    self visited := ConcurrentSet clone init
+    self results := ConcurrentList clone
+    self
+)
+
+WebScraper scrape := method(urls,
+    futures := list()
+    
+    urls foreach(url,
+        if(visited contains(url) not,
+            visited add(url)
+            
+            future := @(
+                semaphore acquire
+                e := try(
+                    ("Scraping " .. url) println
+                    // Simulate HTTP request
+                    wait(Random value)
+                    
+                    content := "Content from " .. url
+                    results append(Map with("url", url, "content", content))
+                    
+                    // Find more URLs (simplified)
+                    if(Random value &lt; 0.3,
+                        newUrl := url .. "/" .. Random value round
+                        self scrape(list(newUrl))
+                    )
+                )
+                
+                semaphore release
+                if(e, ("Error scraping " .. url .. ": " .. e message) println)
+            )
+            
+            futures append(future)
+        )
+    )
+    
+    futures map(resolve)
+    self
+)
+
+// Usage
+scraper := WebScraper clone init(3)
+scraper scrape(list(
+    "https://example.com",
+    "https://example.org",
+    "https://example.net"
+))
+
+wait(2)
+("Scraped " .. scraper results size .. " pages") println</code></pre></div></div><h2 id="conclusion">Conclusion</h2><div class="section"><div class="section-body"><p>Io's concurrency model, built on coroutines, actors, and futures, provides powerful abstractions for concurrent programming. The cooperative nature of coroutines gives you fine control over scheduling, while actors provide isolation and message-passing safety. Futures enable asynchronous programming patterns familiar from other languages.</p><p>The beauty of Io's approach is that these concurrency primitives are implemented using the same object model as everything else. Coroutines are objects, messages can be sent asynchronously with <code>@</code>, and synchronization primitives can be built from basic objects and messages. This consistency makes concurrent programming in Io both powerful and comprehensible.</p></div></div><div class="page-footer"><a class="next-link" href="../Domain-Specific-Languages/index.html">Domain-Specific Languages &rarr;</a></div></div>
+<script src="../colvmn/layout/bundle.js" defer></script>
+  <script type="application/json" id="colvmn-prefetch">{"./_index.json":{"ok":false,"status":404},"./_index.md":{"ok":true,"status":200,"content":"---\ntitle: Concurrency\ntopTitle: Io\nsubtitle: \"Coroutines, actors, and futures for cooperative and message-passing concurrency.\"\nnextSectionLink: true\n---\n\nIo provides powerful concurrency primitives: coroutines for cooperative multitasking, actors for message-passing concurrency, and futures for asynchronous computation. This chapter explores these mechanisms and how they enable concurrent and parallel programming in Io.\n\n## Coroutines: Cooperative Multitasking\n\nCoroutines are the foundation of Io's concurrency model. They're lightweight threads that yield control cooperatively:\n\n```io\n// Create a coroutine\ncoro := coroutine(\n    5 repeat(i,\n        (\"Coroutine: \" .. i) println\n        yield  // Give control back\n    )\n)\n\n// Run it\n5 repeat(\n    \"Main\" println\n    coro resume  // Resume the coroutine\n)\n// Output interleaves Main and Coroutine messages\n```\n\nCompare with threads in other languages:\n\n```python\n# Python with threads (preemptive)\nimport threading\ndef worker():\n    for i in range(5):\n        print(f\"Thread: {i}\")\n        # No explicit yield needed\n\n# Python with async (cooperative)\nasync def worker():\n    for i in range(5):\n        print(f\"Coroutine: {i}\")\n        await asyncio.sleep(0)  # Explicit yield\n```\n\n## Creating and Managing Coroutines\n\n```io\n// Basic coroutine creation\ncoro := Coroutine clone\ncoro setRunMessage(message(\n    \"Running in coroutine\" println\n    self  // Return value\n))\ncoro resume println  // \"Running in coroutine\", then returns self\n\n// Using @ for async execution\nfuture := obj @method(arg)  // Runs method in new coroutine\nresult := future resolve     // Wait for result\n\n// Coroutine with arguments\nproducer := coroutine(\n    10 repeat(i,\n        yield(i * i)  // Yield a value\n    )\n)\n\n5 repeat(\n    producer resume println  // 0, 1, 4, 9, 16\n)\n```\n\n## Actors: Message-Passing Concurrency\n\nActors are objects that process messages asynchronously in their own coroutine:\n\n```io\n// Create an actor\nCounter := Object clone\nCounter count := 0\nCounter increment := method(\n    count = count + 1\n    count\n)\n\n// Make it an actor\ncounter := Counter clone\ncounterActor := counter @  // @ makes it an actor\n\n// Send messages asynchronously\nfuture1 := counterActor increment\nfuture2 := counterActor increment\nfuture3 := counterActor increment\n\n// Get results\nfuture1 resolve println  // 1\nfuture2 resolve println  // 2\nfuture3 resolve println  // 3\n```\n\nThis is similar to Erlang's actor model:\n\n```erlang\n% Erlang\ncounter(Count) ->\n    receive\n        {increment, From} ->\n            From ! Count + 1,\n            counter(Count + 1)\n    end.\n```\n\n## Futures and Promises\n\nFutures represent values that will be available later:\n\n```io\n// Create a future manually\nfuture := Future clone\n\n// In another coroutine, fulfill it\n@(\n    wait(1)  // Simulate work\n    future setResult(42)\n)\n\n// Wait for result\n\"Waiting...\" println\nresult := future resolve\n(\"Got result: \" .. result) println  // Got result: 42\n\n// Futures from async calls\nslowOperation := method(n,\n    wait(n)\n    n * 2\n)\n\nf := self @slowOperation(2)\n\"Doing other work...\" println\nresult := f resolve\nresult println  // 4\n```\n\n## Channels for Communication\n\nImplement Go-style channels:\n\n```io\nChannel := Object clone\nChannel init := method(\n    self queue := list()\n    self waiters := list()\n    self\n)\n\nChannel send := method(value,\n    if(waiters size > 0,\n        waiter := waiters removeFirst\n        waiter resume(value),\n        queue append(value)\n    )\n)\n\nChannel receive := method(\n    if(queue size > 0,\n        queue removeFirst,\n        waiters append(Coroutine currentCoroutine)\n        Coroutine currentCoroutine pause\n    )\n)\n\n// Usage\nch := Channel clone init\n\n// Producer\n@(\n    5 repeat(i,\n        ch send(i * i)\n        wait(0.1)\n    )\n)\n\n// Consumer\n@(\n    5 repeat(\n        value := ch receive\n        (\"Received: \" .. value) println\n    )\n)\n\nwait(1)  // Let them run\n```\n\n## Synchronization Primitives\n\n### Mutex (Mutual Exclusion)\n\n```io\nMutex := Object clone\nMutex locked := false\nMutex waitQueue := list()\n\nMutex lock := method(\n    while(locked,\n        waitQueue append(Coroutine currentCoroutine)\n        Coroutine currentCoroutine pause\n    )\n    locked = true\n)\n\nMutex unlock := method(\n    locked = false\n    if(waitQueue size > 0,\n        waiter := waitQueue removeFirst\n        waiter resume\n    )\n)\n\nMutex synchronize := method(block,\n    lock\n    e := try(result := block call)\n    unlock\n    if(e, e raise, result)\n)\n\n// Usage\nsharedCounter := 0\nmutex := Mutex clone\n\n10 repeat(\n    @(\n        mutex synchronize(\n            temp := sharedCounter\n            yield  // Simulate race condition\n            sharedCounter = temp + 1\n        )\n    )\n)\n\nwait(0.5)\nsharedCounter println  // 10 (without mutex would be unpredictable)\n```\n\n### Semaphore\n\n```io\nSemaphore := Object clone\nSemaphore init := method(permits,\n    self permits := permits\n    self waitQueue := list()\n    self\n)\n\nSemaphore acquire := method(\n    while(permits \u003c= 0,\n        waitQueue append(Coroutine currentCoroutine)\n        Coroutine currentCoroutine pause\n    )\n    permits = permits - 1\n)\n\nSemaphore release := method(\n    permits = permits + 1\n    if(waitQueue size > 0,\n        waiter := waitQueue removeFirst\n        waiter resume\n    )\n)\n\n// Usage: Limit concurrent connections\nconnectionPool := Semaphore clone init(3)\n\n10 repeat(i,\n    @(\n        connectionPool acquire\n        (\"Connection \" .. i .. \" started\") println\n        wait(Random value)\n        (\"Connection \" .. i .. \" finished\") println\n        connectionPool release\n    )\n)\n\nwait(3)\n```\n\n## Concurrent Collections\n\n```io\n// Thread-safe list\nConcurrentList := List clone\nConcurrentList mutex := Mutex clone\n\nConcurrentList append := method(item,\n    mutex synchronize(resend(item))\n)\n\nConcurrentList at := method(index,\n    mutex synchronize(resend(index))\n)\n\nConcurrentList size := method(\n    mutex synchronize(resend)\n)\n\n// Usage\nlist := ConcurrentList clone\n\n10 repeat(i,\n    @(list append(i))\n)\n\nwait(0.1)\nlist size println  // 10\n```\n\n## Worker Pool Pattern\n\n```io\nWorkerPool := Object clone\nWorkerPool init := method(workerCount,\n    self workers := list()\n    self taskQueue := Channel clone init\n    self results := Channel clone init\n    \n    workerCount repeat(\n        worker := @(\n            loop(\n                task := taskQueue receive\n                if(task isNil, break)  // Poison pill\n                \n                result := task call\n                results send(result)\n            )\n        )\n        workers append(worker)\n    )\n    \n    self\n)\n\nWorkerPool submit := method(task,\n    taskQueue send(task)\n)\n\nWorkerPool shutdown := method(\n    workers size repeat(taskQueue send(nil))\n)\n\nWorkerPool getResult := method(\n    results receive\n)\n\n// Usage\npool := WorkerPool clone init(4)\n\n// Submit tasks\n10 repeat(i,\n    pool submit(block(\n        wait(Random value * 0.1)\n        i * i\n    ))\n)\n\n// Collect results\nresults := list()\n10 repeat(\n    results append(pool getResult)\n)\n\npool shutdown\nresults println\n```\n\n## Async/Await Pattern\n\n```io\n// Implement async/await style\nObject async := method(\n    future := Future clone\n    \n    @(\n        e := try(result := call activated doMessage(call message, call sender))\n        if(e,\n            future setException(e),\n            future setResult(result)\n        )\n    )\n    \n    future\n)\n\nObject await := method(future,\n    future resolve\n)\n\n// Usage\nfetchData := async method(url,\n    wait(1)  // Simulate network delay\n    \"Data from \" .. url\n)\n\nprocessData := async method(\n    data1 := await(fetchData(\"api/users\"))\n    data2 := await(fetchData(\"api/posts\"))\n    data1 .. \" + \" .. data2\n)\n\nresult := await(processData)\nresult println  // Data from api/users + Data from api/posts\n```\n\n## Parallel Map\n\n```io\nList parallelMap := method(block,\n    futures := self map(item,\n        self @(block call(item))\n    )\n    \n    futures map(resolve)\n)\n\n// Usage\nnumbers := list(1, 2, 3, 4, 5)\n\n// Sequential map\ntime(\n    sequential := numbers map(n,\n        wait(0.1)\n        n * n\n    )\n)\n\n// Parallel map\ntime(\n    parallel := numbers parallelMap(n,\n        wait(0.1)\n        n * n\n    )\n)\n\nsequential println  // list(1, 4, 9, 16, 25)\nparallel println    // list(1, 4, 9, 16, 25) but faster\n```\n\n## Deadlock Detection\n\n```io\nDeadlockDetector := Object clone\nDeadlockDetector init := method(\n    self resources := Map clone\n    self waitGraph := Map clone\n    self\n)\n\nDeadlockDetector requestResource := method(coroutine, resource,\n    // Add to wait graph\n    if(resources hasKey(resource),\n        owner := resources at(resource)\n        if(owner != coroutine,\n            waitGraph atPut(coroutine, resource)\n            \n            // Check for cycle\n            if(hasCycle(coroutine),\n                Exception raise(\"Deadlock detected!\")\n            )\n        )\n    )\n)\n\nDeadlockDetector hasCycle := method(start,\n    // Simplified cycle detection\n    visited := list()\n    current := start\n    \n    while(waitGraph hasKey(current),\n        if(visited contains(current), return true)\n        visited append(current)\n        \n        resource := waitGraph at(current)\n        if(resources hasKey(resource),\n            current = resources at(resource)\n        ,\n            break\n        )\n    )\n    \n    false\n)\n```\n\n## Event Loop\n\n```io\nEventLoop := Object clone\nEventLoop init := method(\n    self events := list()\n    self running := true\n    self\n)\n\nEventLoop schedule := method(delay, block,\n    events append(list(Date now + delay, block))\n    events sortInPlaceBy(block(e, e at(0)))\n)\n\nEventLoop run := method(\n    while(running and events size > 0,\n        now := Date now\n        \n        while(events size > 0 and events first at(0) \u003c= now,\n            event := events removeFirst\n            event at(1) @call\n        )\n        \n        if(events size > 0,\n            wait((events first at(0) - now) max(0))\n        )\n    )\n)\n\nEventLoop stop := method(running = false)\n\n// Usage\nloop := EventLoop clone init\n\nloop schedule(0.1, block(\"First\" println))\nloop schedule(0.2, block(\"Second\" println))\nloop schedule(0.15, block(\"Between\" println))\n\nloop run\n```\n\n## Common Patterns\n\n### Producer-Consumer\n\n```io\nBuffer := Object clone\nBuffer init := method(capacity,\n    self items := list()\n    self capacity := capacity\n    self notFull := Semaphore clone init(capacity)\n    self notEmpty := Semaphore clone init(0)\n    self mutex := Mutex clone\n    self\n)\n\nBuffer put := method(item,\n    notFull acquire\n    mutex synchronize(items append(item))\n    notEmpty release\n)\n\nBuffer get := method(\n    notEmpty acquire\n    item := mutex synchronize(items removeFirst)\n    notFull release\n    item\n)\n\n// Usage\nbuffer := Buffer clone init(5)\n\n// Producer\n@(\n    10 repeat(i,\n        (\"Producing \" .. i) println\n        buffer put(i)\n        wait(Random value * 0.1)\n    )\n)\n\n// Consumer\n@(\n    10 repeat(\n        item := buffer get\n        (\"Consumed \" .. item) println\n        wait(Random value * 0.2)\n    )\n)\n\nwait(3)\n```\n\n### Fork-Join\n\n```io\nObject forkJoin := method(tasks,\n    futures := tasks map(task,\n        @(task call)\n    )\n    \n    futures map(resolve)\n)\n\n// Parallel quicksort\nquicksort := method(list,\n    if(list size \u003c= 1, return list)\n    \n    pivot := list at(list size / 2)\n    \n    results := forkJoin(list(\n        block(list select(x, x \u003c pivot) quicksort),\n        block(list select(x, x == pivot)),\n        block(list select(x, x > pivot) quicksort)\n    ))\n    \n    results at(0) appendSeq(results at(1)) appendSeq(results at(2))\n)\n\nsorted := quicksort(list(3, 1, 4, 1, 5, 9, 2, 6))\nsorted println  // list(1, 1, 2, 3, 4, 5, 6, 9)\n```\n\n## Performance Considerations\n\n```io\n// Coroutines are lightweight\ntime(\n    coroutines := list()\n    1000 repeat(i,\n        coroutines append(@(i * i))\n    )\n    coroutines map(resolve)\n)\n\n// But context switching has overhead\nbenchmarkConcurrency := method(taskCount, taskWork,\n    // Sequential\n    seqTime := time(\n        taskCount repeat(i, taskWork call(i))\n    )\n    \n    // Concurrent\n    concTime := time(\n        futures := list()\n        taskCount repeat(i,\n            futures append(@(taskWork call(i)))\n        )\n        futures map(resolve)\n    )\n    \n    (\"Sequential: \" .. seqTime) println\n    (\"Concurrent: \" .. concTime) println\n    (\"Speedup: \" .. (seqTime / concTime)) println\n)\n\n// Light work - concurrency overhead dominates\nbenchmarkConcurrency(100, block(i, i * i))\n\n// Heavy work - concurrency helps\nbenchmarkConcurrency(10, block(i,\n    sum := 0\n    10000 repeat(j, sum = sum + j)\n    sum\n))\n```\n\n## Exercises\n\n1. **Rate Limiter**: Implement a rate limiter that allows N operations per second.\n\n2. **Parallel Reduce**: Create a parallel version of reduce that divides work among workers.\n\n3. **Actor Supervisor**: Build a supervisor that restarts failed actors.\n\n4. **CSP Channels**: Implement Communicating Sequential Processes with select statement.\n\n5. **STM**: Implement Software Transactional Memory for conflict-free concurrent updates.\n\n## Real-World Example: Web Scraper\n\n```io\nWebScraper := Object clone\nWebScraper init := method(maxConcurrent,\n    self semaphore := Semaphore clone init(maxConcurrent)\n    self visited := ConcurrentSet clone init\n    self results := ConcurrentList clone\n    self\n)\n\nWebScraper scrape := method(urls,\n    futures := list()\n    \n    urls foreach(url,\n        if(visited contains(url) not,\n            visited add(url)\n            \n            future := @(\n                semaphore acquire\n                e := try(\n                    (\"Scraping \" .. url) println\n                    // Simulate HTTP request\n                    wait(Random value)\n                    \n                    content := \"Content from \" .. url\n                    results append(Map with(\"url\", url, \"content\", content))\n                    \n                    // Find more URLs (simplified)\n                    if(Random value \u003c 0.3,\n                        newUrl := url .. \"/\" .. Random value round\n                        self scrape(list(newUrl))\n                    )\n                )\n                \n                semaphore release\n                if(e, (\"Error scraping \" .. url .. \": \" .. e message) println)\n            )\n            \n            futures append(future)\n        )\n    )\n    \n    futures map(resolve)\n    self\n)\n\n// Usage\nscraper := WebScraper clone init(3)\nscraper scrape(list(\n    \"https://example.com\",\n    \"https://example.org\",\n    \"https://example.net\"\n))\n\nwait(2)\n(\"Scraped \" .. scraper results size .. \" pages\") println\n```\n\n## Conclusion\n\nIo's concurrency model, built on coroutines, actors, and futures, provides powerful abstractions for concurrent programming. The cooperative nature of coroutines gives you fine control over scheduling, while actors provide isolation and message-passing safety. Futures enable asynchronous programming patterns familiar from other languages.\n\nThe beauty of Io's approach is that these concurrency primitives are implemented using the same object model as everything else. Coroutines are objects, messages can be sent asynchronously with `@`, and synchronization primitives can be built from basic objects and messages. This consistency makes concurrent programming in Io both powerful and comprehensible.\n"},"../_index.json":{"ok":true,"status":200,"content":"{\n  \"title\": \"The Io Programming Language\",\n  \"topTitle\": \"Io\",\n  \"subtitle\": \"A comprehensive guide to prototype-based programming with Io.\",\n  \"content\": [\n    {\n      \"type\": \"ContentText\",\n      \"content\": \"This book provides an in-depth exploration of the Io programming language, designed for experienced programmers who want to understand prototype-based object-oriented programming. Through detailed comparisons with mainstream languages like JavaScript, Python, Ruby, and Java, readers will gain practical insights into Io's unique paradigm.\"\n    },\n    {\n      \"type\": \"ContentCards\",\n      \"title\": \"Chapters\",\n      \"columns\": 2,\n      \"items\": [\n        \"Preface\",\n        \"Introduction\",\n        \"Getting-Started\",\n        \"Everything-is-an-Object\",\n        \"Prototypes-Not-Classes\",\n        \"Messages-and-Slots\",\n        \"Cloning-and-Inheritance\",\n        \"Control-Flow\",\n        \"Collections\",\n        \"Blocks-and-Closures\",\n        \"Exceptions\",\n        \"Metaprogramming\",\n        \"Concurrency\",\n        \"Domain-Specific-Languages\",\n        \"C-Integration\",\n        \"Real-World-Patterns\",\n        \"Case-Studies\",\n        \"Ecosystem-and-Libraries\",\n        \"Conclusion\"\n      ]\n    }\n  ]\n}\n"},"../Domain-Specific-Languages/_index.json":{"ok":false,"status":404},"../Domain-Specific-Languages/_index.md":{"ok":true,"status":200,"content":"---\ntitle: Domain-Specific Languages\ntopTitle: Io\nsubtitle: \"Using Io's minimal syntax and metaprogramming to design expressive DSLs.\"\nnextSectionLink: true\n---\n\nIo's minimal syntax, message-passing model, and metaprogramming capabilities make it ideal for creating Domain-Specific Languages (DSLs). This chapter explores how to build expressive DSLs that feel native to their problem domains.\n\n## Why Io Excels at DSLs\n\nSeveral features make Io particularly suitable for DSLs:\n\n1. **Minimal syntax** - Less language machinery to work around\n2. **Optional parentheses** - Clean, readable DSL code\n3. **Message chains** - Natural expression of domain concepts\n4. **Runtime flexibility** - Modify behavior on the fly\n5. **Homoiconicity** - Code as manipulable data\n\nCompare a hypothetical DSL in Io vs Ruby:\n\n```io\n// Io DSL - clean, minimal\nrecipe \"Chocolate Cake\" makes(8) servings {\n    ingredient \"flour\" amount(2) cups\n    ingredient \"sugar\" amount(1.5) cups\n    \n    step \"Mix dry ingredients\"\n    step \"Add wet ingredients\"\n    bake at(350) degrees for(30) minutes\n}\n```\n\n```ruby\n# Ruby DSL - more syntax artifacts\nrecipe \"Chocolate Cake\" do\n    makes 8.servings\n    \n    ingredient \"flour\", amount: 2.cups\n    ingredient \"sugar\", amount: 1.5.cups\n    \n    step \"Mix dry ingredients\"\n    step \"Add wet ingredients\"\n    bake at: 350.degrees, for: 30.minutes\nend\n```\n\n## Building Your First DSL\n\nLet's create a simple configuration DSL:\n\n```io\n// Define the DSL\nConfig := Object clone\nConfig settings := Map clone\n\nConfig set := method(key, value,\n    settings atPut(key asString, value)\n    self  // For chaining\n)\n\nConfig get := method(key,\n    settings at(key asString)\n)\n\nConfig section := method(name,\n    sec := Config clone\n    settings atPut(name asString, sec)\n    sec\n)\n\n// Use the DSL\nconfig := Config clone\nconfig set(\"host\", \"localhost\") \\\n      set(\"port\", 8080) \\\n      section(\"database\") \\\n          set(\"driver\", \"postgresql\") \\\n          set(\"name\", \"myapp\")\n\nconfig get(\"host\") println           // localhost\nconfig get(\"database\") get(\"driver\") println  // postgresql\n```\n\n## HTML Builder DSL\n\nA more complex example - generating HTML:\n\n```io\nHTML := Object clone\n\n// Handle any tag name via forward\nHTML forward := method(\n    tagName := call message name\n    attributes := Map clone\n    children := list()\n    \n    // Process arguments\n    call message arguments foreach(arg,\n        argValue := call sender doMessage(arg)\n        \n        if(argValue type == \"Map\",\n            // It's attributes\n            attributes = argValue\n        ,\n            // It's content or children\n            if(argValue type == \"Sequence\",\n                children append(argValue),\n                if(argValue type == \"List\",\n                    children appendSeq(argValue),\n                    children append(argValue asString)\n                )\n            )\n        )\n    )\n    \n    // Build HTML\n    result := \"\u003c\" .. tagName\n    attributes foreach(key, value,\n        result = result .. \" \" .. key .. \"=\\\"\" .. value .. \"\\\"\"\n    )\n    \n    if(children size == 0,\n        result = result .. \" />\",\n        result = result .. \">\"\n        children foreach(child, result = result .. child)\n        result = result .. \"\u003c/\" .. tagName .. \">\"\n    )\n    \n    result\n)\n\n// Helper for attributes\nObject attrs := method(\n    args := call message arguments\n    map := Map clone\n    \n    args foreach(arg,\n        pair := arg name split(\":\")\n        if(pair size == 2,\n            map atPut(pair at(0), call sender doMessage(arg arguments at(0)))\n        )\n    )\n    map\n)\n\n// Usage\nhtml := HTML clone\n\npage := html div(attrs(class: \"container\", id: \"main\"),\n    html h1(\"Welcome to My Site\"),\n    html p(attrs(class: \"intro\"), \n        \"This is a paragraph with \",\n        html strong(\"bold text\"),\n        \" in it.\"\n    ),\n    html ul(\n        html li(\"First item\"),\n        html li(\"Second item\"),\n        html li(\"Third item\")\n    )\n)\n\npage println\n// \u003cdiv class=\"container\" id=\"main\">\u003ch1>Welcome to My Site\u003c/h1>...\n```\n\n## SQL Query Builder\n\n```io\nQuery := Object clone\nQuery init := method(\n    self selections := list(\"*\")\n    self tables := list()\n    self conditions := list()\n    self joins := list()\n    self\n)\n\nQuery select := method(\n    self selections = call message arguments map(arg,\n        call sender doMessage(arg) asString\n    )\n    self\n)\n\nQuery from := method(table,\n    tables append(table)\n    self\n)\n\nQuery where := method(\n    condition := call argAt(0)\n    conditions append(condition code asString)\n    self\n)\n\nQuery join := method(table, on,\n    joins append(\"JOIN \" .. table .. \" ON \" .. on code asString)\n    self\n)\n\nQuery toSQL := method(\n    sql := \"SELECT \" .. selections join(\", \")\n    sql = sql .. \" FROM \" .. tables join(\", \")\n    \n    if(joins size > 0,\n        sql = sql .. \" \" .. joins join(\" \")\n    )\n    \n    if(conditions size > 0,\n        sql = sql .. \" WHERE \" .. conditions join(\" AND \")\n    )\n    \n    sql\n)\n\n// Usage\nquery := Query clone init\n\nsql := query select(\"name\", \"age\", \"email\") \\\n            from(\"users\") \\\n            join(\"profiles\", users.id == profiles.user_id) \\\n            where(age > 18) \\\n            where(status == \"active\") \\\n            toSQL\n\nsql println\n// SELECT name, age, email FROM users JOIN profiles ON users.id == profiles.user_id WHERE age > 18 AND status == \"active\"\n```\n\n## Unit Testing DSL\n\n```io\nTestSuite := Object clone\nTestSuite tests := list()\nTestSuite currentTest := nil\n\nTestSuite describe := method(description,\n    suite := TestSuite clone\n    suite description := description\n    suite tests = list()\n    \n    # Execute the test definition block\n    call evalArgAt(1)\n    \n    suite\n)\n\nTestSuite it := method(testName,\n    test := Object clone\n    test name := testName\n    test block := call argAt(1)\n    tests append(test)\n)\n\nTestSuite before := method(\n    self beforeBlock := call argAt(0)\n)\n\nTestSuite after := method(\n    self afterBlock := call argAt(0)\n)\n\nTestSuite run := method(\n    (\"\\n\" .. description) println\n    (\"=\" repeated(description size)) println\n    \n    passed := 0\n    failed := 0\n    \n    tests foreach(test,\n        if(hasSlot(\"beforeBlock\"), beforeBlock doInContext(self))\n        \n        e := try(\n            test block doInContext(self)\n            (\"✓ \" .. test name) println\n            passed = passed + 1\n        ) catch(Exception, e,\n            (\"✗ \" .. test name) println\n            (\"  \" .. e message) println\n            failed = failed + 1\n        )\n        \n        if(hasSlot(\"afterBlock\"), afterBlock doInContext(self))\n    )\n    \n    (\"\\nPassed: \" .. passed .. \", Failed: \" .. failed) println\n)\n\n// Assertion helpers\nObject expect := method(actual,\n    Expectation clone setActual(actual)\n)\n\nExpectation := Object clone\nExpectation setActual := method(value,\n    self actual := value\n    self\n)\n\nExpectation toBe := method(expected,\n    if(actual != expected,\n        Exception raise(\"Expected \" .. expected .. \" but got \" .. actual)\n    )\n)\n\nExpectation toEqual := method(expected,\n    if(actual != expected,\n        Exception raise(\"Expected \" .. expected .. \" but got \" .. actual)\n    )\n)\n\nExpectation toContain := method(item,\n    if(actual contains(item) not,\n        Exception raise(\"Expected \" .. actual .. \" to contain \" .. item)\n    )\n)\n\n// Usage\nMathTests := describe(\"Math operations\",\n    before(\n        self calculator := Object clone\n        calculator add := method(a, b, a + b)\n        calculator multiply := method(a, b, a * b)\n    )\n    \n    it(\"should add numbers correctly\",\n        expect(calculator add(2, 3)) toBe(5)\n        expect(calculator add(-1, 1)) toBe(0)\n    )\n    \n    it(\"should multiply numbers correctly\",\n        expect(calculator multiply(3, 4)) toBe(12)\n        expect(calculator multiply(0, 5)) toBe(0)\n    )\n    \n    it(\"should handle edge cases\",\n        expect(calculator add(0, 0)) toBe(0)\n    )\n)\n\nMathTests run\n```\n\n## State Machine DSL\n\n```io\nStateMachine := Object clone\nStateMachine states := Map clone\nStateMachine currentState := nil\nStateMachine initialState := nil\n\nStateMachine state := method(name,\n    s := State clone\n    s name := name\n    s machine := self\n    states atPut(name, s)\n    \n    if(initialState isNil, initialState = s)\n    \n    s\n)\n\nState := Object clone\nState transitions := Map clone\n\nState on := method(event, targetState,\n    transitions atPut(event, targetState)\n    self\n)\n\nState enter := method(\n    self enterBlock := call argAt(0)\n    self\n)\n\nState exit := method(\n    self exitBlock := call argAt(0)\n    self\n)\n\nStateMachine start := method(\n    currentState = initialState\n    if(currentState hasSlot(\"enterBlock\"),\n        currentState enterBlock call\n    )\n)\n\nStateMachine trigger := method(event,\n    if(currentState transitions hasKey(event),\n        nextStateName := currentState transitions at(event)\n        nextState := states at(nextStateName)\n        \n        if(currentState hasSlot(\"exitBlock\"),\n            currentState exitBlock call\n        )\n        \n        (\"Transitioning from \" .. currentState name .. \" to \" .. nextStateName) println\n        currentState = nextState\n        \n        if(currentState hasSlot(\"enterBlock\"),\n            currentState enterBlock call\n        )\n    ,\n        (\"No transition for event '\" .. event .. \"' from state '\" .. currentState name .. \"'\") println\n    )\n)\n\n// Usage\ndoor := StateMachine clone\n\ndoor state(\"closed\") \\\n    on(\"open\", \"opened\") \\\n    on(\"lock\", \"locked\") \\\n    enter(block(\"Door is now closed\" println))\n\ndoor state(\"opened\") \\\n    on(\"close\", \"closed\") \\\n    enter(block(\"Door is now open\" println))\n\ndoor state(\"locked\") \\\n    on(\"unlock\", \"closed\") \\\n    enter(block(\"Door is now locked\" println))\n\ndoor start\ndoor trigger(\"open\")   // Transitioning from closed to opened\ndoor trigger(\"close\")  // Transitioning from opened to closed\ndoor trigger(\"lock\")   // Transitioning from closed to locked\ndoor trigger(\"open\")   // No transition for event 'open' from state 'locked'\n```\n\n## Routing DSL (Web Framework Style)\n\n```io\nRouter := Object clone\nRouter routes := list()\n\nRouter get := method(path,\n    addRoute(\"GET\", path, call argAt(1))\n)\n\nRouter post := method(path,\n    addRoute(\"POST\", path, call argAt(1))\n)\n\nRouter put := method(path,\n    addRoute(\"PUT\", path, call argAt(1))\n)\n\nRouter delete := method(path,\n    addRoute(\"DELETE\", path, call argAt(1))\n)\n\nRouter addRoute := method(method, path, handler,\n    routes append(Map with(\n        \"method\", method,\n        \"path\", path,\n        \"pattern\", pathToRegex(path),\n        \"handler\", handler\n    ))\n    self\n)\n\nRouter pathToRegex := method(path,\n    // Convert :param to regex groups\n    pattern := path\n    pattern = pattern replaceAllRegex(\":([^/]+)\", \"([^/]+)\")\n    \"^\" .. pattern .. \"$\"\n)\n\nRouter handle := method(method, path,\n    routes foreach(route,\n        if(route at(\"method\") == method,\n            match := path matchesRegex(route at(\"pattern\"))\n            if(match,\n                params := extractParams(route at(\"path\"), path, match)\n                return route at(\"handler\") call(params)\n            )\n        )\n    )\n    \n    Map with(\"status\", 404, \"body\", \"Not Found\")\n)\n\nRouter extractParams := method(pattern, path, match,\n    params := Map clone\n    \n    // Extract named parameters\n    names := pattern allMatchesOfRegex(\":([^/]+)\") map(m, m at(1))\n    names foreach(i, name,\n        params atPut(name, match at(i + 1))\n    )\n    \n    params\n)\n\n// Usage\napp := Router clone\n\napp get(\"/\", block(params,\n    Map with(\"status\", 200, \"body\", \"Welcome to the home page\")\n))\n\napp get(\"/users/:id\", block(params,\n    Map with(\"status\", 200, \"body\", \"User \" .. params at(\"id\"))\n))\n\napp post(\"/users\", block(params,\n    Map with(\"status\", 201, \"body\", \"User created\")\n))\n\n// Simulate requests\napp handle(\"GET\", \"/\") at(\"body\") println        // Welcome to the home page\napp handle(\"GET\", \"/users/123\") at(\"body\") println  // User 123\napp handle(\"POST\", \"/users\") at(\"body\") println  // User created\napp handle(\"GET\", \"/unknown\") at(\"body\") println // Not Found\n```\n\n## Data Validation DSL\n\n```io\nValidator := Object clone\n\nValidator field := method(name,\n    f := Field clone\n    f name := name\n    f rules := list()\n    self currentField := f\n    f\n)\n\nField := Object clone\n\nField required := method(\n    rules append(block(value,\n        if(value isNil or value == \"\",\n            Exception raise(name .. \" is required\"),\n            true\n        )\n    ))\n    self\n)\n\nField minLength := method(min,\n    rules append(block(value,\n        if(value size \u003c min,\n            Exception raise(name .. \" must be at least \" .. min .. \" characters\"),\n            true\n        )\n    ))\n    self\n)\n\nField maxLength := method(max,\n    rules append(block(value,\n        if(value size > max,\n            Exception raise(name .. \" must be at most \" .. max .. \" characters\"),\n            true\n        )\n    ))\n    self\n)\n\nField matches := method(regex,\n    rules append(block(value,\n        if(value matchesRegex(regex) not,\n            Exception raise(name .. \" has invalid format\"),\n            true\n        )\n    ))\n    self\n)\n\nField validate := method(value,\n    rules foreach(rule,\n        rule call(value)\n    )\n    true\n)\n\n// Usage\nuserValidator := Validator clone\n\nusername := userValidator field(\"username\") \\\n    required \\\n    minLength(3) \\\n    maxLength(20) \\\n    matches(\"^[a-zA-Z0-9_]+$\")\n\nemail := userValidator field(\"email\") \\\n    required \\\n    matches(\"^[^@]+@[^@]+\\\\.[^@]+$\")\n\n// Test validation\ntry(\n    username validate(\"ab\")\n) catch(Exception, e,\n    e message println  // username must be at least 3 characters\n)\n\ntry(\n    email validate(\"not-an-email\")\n) catch(Exception, e,\n    e message println  // email has invalid format\n)\n\nusername validate(\"valid_user123\") println  // true\nemail validate(\"user@example.com\") println  // true\n```\n\n## DSL Best Practices\n\n### 1. Natural Language Flow\n\n```io\n// Good - reads naturally\nrecipe needs(2) cups of(\"flour\")\norder shipping priority within(3) days\n\n// Bad - programmer-centric\nrecipe setAmount(2) setUnit(\"cups\") setIngredient(\"flour\")\norder setShipping(\"priority\") setDeliveryDays(3)\n```\n\n### 2. Method Chaining\n\n```io\n// Enable fluent interfaces\nObject withChaining := method(\n    call message arguments foreach(arg,\n        slotName := arg name\n        self setSlot(slotName, call evalArgAt(0))\n    )\n    self  // Always return self\n)\n\nPerson := Object clone\nPerson configure := method(\n    withChaining(\n        name(n, self name := n),\n        age(a, self age := a),\n        email(e, self email := e)\n    )\n)\n\nperson := Person clone configure \\\n    name(\"Alice\") \\\n    age(30) \\\n    email(\"alice@example.com\")\n```\n\n### 3. Context Management\n\n```io\nDSLContext := Object clone\nDSLContext stack := list()\n\nDSLContext push := method(obj,\n    stack append(obj)\n)\n\nDSLContext pop := method(\n    stack pop\n)\n\nDSLContext current := method(\n    stack last\n)\n\nDSLContext with := method(obj, block,\n    push(obj)\n    e := try(result := block call)\n    pop\n    if(e, e raise, result)\n)\n\n// Usage in DSL\nForm := Object clone\nForm fields := list()\n\nForm field := method(name,\n    f := Field clone\n    f name := name\n    DSLContext with(f,\n        call evalArgAt(1)\n    )\n    fields append(f)\n)\n\nField label := method(text,\n    DSLContext current label := text\n)\n```\n\n## Exercises\n\n1. **CSS DSL**: Create a DSL for generating CSS with nested rules and variables.\n\n2. **Graph Description Language**: Build a DSL for describing graphs and their relationships.\n\n3. **Build System DSL**: Implement a make/rake-like build system DSL.\n\n4. **BDD Testing DSL**: Create a Behavior-Driven Development testing framework.\n\n5. **Configuration Management**: Build a DSL for system configuration management.\n\n## Real-World Example: Migration DSL\n\n```io\nMigration := Object clone\nMigration changes := list()\n\nMigration createTable := method(name,\n    table := TableDefinition clone\n    table name := name\n    table columns := list()\n    \n    call evalArgAt(1)\n    \n    changes append(Map with(\n        \"type\", \"createTable\",\n        \"table\", table\n    ))\n    self\n)\n\nMigration dropTable := method(name,\n    changes append(Map with(\n        \"type\", \"dropTable\",\n        \"name\", name\n    ))\n    self\n)\n\nTableDefinition := Object clone\n\nTableDefinition column := method(name, type,\n    columns append(Map with(\n        \"name\", name,\n        \"type\", type,\n        \"constraints\", list()\n    ))\n    self\n)\n\nTableDefinition primaryKey := method(col,\n    columns last at(\"constraints\") append(\"PRIMARY KEY\")\n    self\n)\n\nTableDefinition notNull := method(\n    columns last at(\"constraints\") append(\"NOT NULL\")\n    self\n)\n\nTableDefinition unique := method(\n    columns last at(\"constraints\") append(\"UNIQUE\")\n    self\n)\n\nMigration toSQL := method(\n    sql := list()\n    \n    changes foreach(change,\n        if(change at(\"type\") == \"createTable\",\n            table := change at(\"table\")\n            stmt := \"CREATE TABLE \" .. table name .. \" (\\n\"\n            \n            cols := table columns map(col,\n                \"  \" .. col at(\"name\") .. \" \" .. col at(\"type\") .. \n                if(col at(\"constraints\") size > 0,\n                    \" \" .. col at(\"constraints\") join(\" \"),\n                    \"\"\n                )\n            )\n            \n            stmt = stmt .. cols join(\",\\n\") .. \"\\n);\"\n            sql append(stmt)\n        )\n        \n        if(change at(\"type\") == \"dropTable\",\n            sql append(\"DROP TABLE \" .. change at(\"name\") .. \";\")\n        )\n    )\n    \n    sql join(\"\\n\\n\")\n)\n\n// Usage\nmigration := Migration clone\n\nmigration createTable(\"users\",\n    column(\"id\", \"INTEGER\") primaryKey,\n    column(\"username\", \"VARCHAR(50)\") notNull unique,\n    column(\"email\", \"VARCHAR(100)\") notNull unique,\n    column(\"created_at\", \"TIMESTAMP\") notNull\n)\n\nmigration createTable(\"posts\",\n    column(\"id\", \"INTEGER\") primaryKey,\n    column(\"user_id\", \"INTEGER\") notNull,\n    column(\"title\", \"VARCHAR(200)\") notNull,\n    column(\"content\", \"TEXT\"),\n    column(\"published_at\", \"TIMESTAMP\")\n)\n\nmigration toSQL println\n```\n\n## Conclusion\n\nDomain-Specific Languages in Io demonstrate the language's expressive power. By leveraging message passing, optional parentheses, method chaining, and metaprogramming, you can create DSLs that feel natural to domain experts while remaining fully integrated with the host language.\n\nThe key to successful DSLs in Io is understanding that you're not fighting against language syntax—you're working with it. Messages become domain commands, objects become domain concepts, and the minimal syntax stays out of your way. This makes Io ideal for creating internal DSLs that are both powerful and readable.\n"}}</script>
+</body>
+</html>

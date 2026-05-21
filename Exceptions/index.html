@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="stylesheet" href="../colvmn/style.css">
+<title>Exceptions – Io</title>
+  <link rel="alternate" type="text/plain" title="llms.txt" href="/llms.txt">
+  <meta name="description" content="Error handling built, like everything else, from objects and messages.">
+</head>
+<body>
+<div class="page loaded"><div class="header"><div><h1>Exceptions</h1><a class="back-link" href="../index.html">&larr; The Io Programming Language</a></div><a class="brand" href="../index.html">Io</a></div><p class="intro">Error handling built, like everything else, from objects and messages.</p><nav class="toc"><ul><li><a href="#basic-exception-handling">Basic Exception Handling</a></li><li><a href="#raising-exceptions">Raising Exceptions</a></li><li><a href="#exception-objects">Exception Objects</a></li><li><a href="#creating-custom-exceptions">Creating Custom Exceptions</a></li><li><a href="#the-finally-block">The finally Block</a></li><li><a href="#return-values-and-exceptions">Return Values and Exceptions</a></li><li><a href="#exception-propagation">Exception Propagation</a></li><li><a href="#rethrowing-exceptions">Rethrowing Exceptions</a></li><li><a href="#error-recovery-patterns">Error Recovery Patterns</a></li><li><a href="#assertion-and-validation">Assertion and Validation</a></li><li><a href="#exception-context-and-debugging">Exception Context and Debugging</a></li><li><a href="#resource-management">Resource Management</a></li><li><a href="#global-exception-handling">Global Exception Handling</a></li><li><a href="#testing-with-exceptions">Testing with Exceptions</a></li><li><a href="#performance-considerations">Performance Considerations</a></li><li><a href="#common-pitfalls">Common Pitfalls</a></li><li><a href="#exercises">Exercises</a></li><li><a href="#real-world-example-http-client-with-error-handling">Real-World Example: HTTP Client with Error Handling</a></li><li><a href="#conclusion">Conclusion</a></li></ul></nav><div class="section"><div class="section-body"><p>Error handling is crucial for robust programs. Io provides an exception system that, like everything else in the language, is built on objects and messages. This chapter explores how exceptions work, how to handle errors gracefully, and how to create custom exception types.</p></div></div><h2 id="basic-exception-handling">Basic Exception Handling</h2><div class="section"><div class="section-body"><p>Io uses <code>try</code>, <code>catch</code>, and <code>raise</code> for exception handling:</p><pre><code>// Basic try-catch
+try(
+    10 / 0  // Division by zero
+) catch(Exception, e,
+    ("Error: " .. e message) println
+)
+// Error: divide by zero
+
+// Multiple catch blocks
+try(
+    someRiskyOperation()
+) catch(TypeError, e,
+    "Type error occurred" println
+) catch(IOException, e,
+    "IO error occurred" println
+) catch(Exception, e,
+    "Some other error occurred" println
+)</code></pre><p>Compare with other languages:</p><pre><code># Python
+try:
+    result = 10 / 0
+except ZeroDivisionError as e:
+    print(f"Error: {e}")</code></pre><pre><code>// Java
+try {
+    int result = 10 / 0;
+} catch (ArithmeticException e) {
+    System.out.println("Error: " + e.getMessage());
+}</code></pre></div></div><h2 id="raising-exceptions">Raising Exceptions</h2><div class="section"><div class="section-body"><pre><code>// Raise a simple exception
+Exception raise("Something went wrong")
+
+// Raise with more information
+e := Exception clone
+e setMessage("File not found")
+e raise
+
+// Conditional raising
+validateAge := method(age,
+    if(age &lt; 0, Exception raise("Age cannot be negative"))
+    if(age &gt; 150, Exception raise("Age seems unrealistic"))
+    age
+)
+
+try(
+    validateAge(-5)
+) catch(Exception, e,
+    e message println  // Age cannot be negative
+)</code></pre></div></div><h2 id="exception-objects">Exception Objects</h2><div class="section"><div class="section-body"><p>Exceptions are just objects:</p><pre><code>// Examine exception structure
+e := Exception clone
+e type println           // Exception
+e proto println          // Object_0x...
+
+// Exception slots
+e setMessage("Test error")
+e message println        // Test error
+
+// Stack trace
+try(
+    Exception raise("Test")
+) catch(Exception, e,
+    e showStack  // Prints full stack trace
+    e coroutine println  // The coroutine where error occurred
+)</code></pre></div></div><h2 id="creating-custom-exceptions">Creating Custom Exceptions</h2><div class="section"><div class="section-body"><pre><code>// Define custom exception types
+ValidationError := Exception clone
+ValidationError type := "ValidationError"
+
+NetworkError := Exception clone
+NetworkError type := "NetworkError"
+NetworkError code := nil
+NetworkError setCode := method(c, self code = c; self)
+
+// Use custom exceptions
+validateEmail := method(email,
+    if(email containsSeq("@") not,
+        ValidationError clone setMessage("Invalid email format") raise
+    )
+    email
+)
+
+fetchData := method(url,
+    // Simulate network error
+    if(Random value &lt; 0.3,
+        NetworkError clone setMessage("Connection timeout") setCode(408) raise
+    )
+    "data"
+)
+
+// Handle specific exception types
+try(
+    validateEmail("badEmail")
+) catch(ValidationError, e,
+    ("Validation failed: " .. e message) println
+) catch(Exception, e,
+    ("Unexpected error: " .. e message) println
+)</code></pre></div></div><h2 id="the-finally-block">The finally Block</h2><div class="section"><div class="section-body"><pre><code>// Ensure cleanup with finally
+file := nil
+try(
+    file = File with("data.txt") openForReading
+    contents := file contents
+    processData(contents)
+) catch(Exception, e,
+    ("Error reading file: " .. e message) println
+) finally(
+    if(file, file close)
+    "Cleanup complete" println
+)
+
+// finally always executes
+result := try(
+    "Success" println
+    42
+) catch(Exception, e,
+    "Error" println
+    0
+) finally(
+    "Always runs" println
+)
+// Prints: Success, Always runs
+result println  // 42</code></pre></div></div><h2 id="return-values-and-exceptions">Return Values and Exceptions</h2><div class="section"><div class="section-body"><pre><code>// try returns a value
+result := try(
+    10 / 2
+) catch(Exception, e,
+    0  // Default value on error
+)
+result println  // 5
+
+// With error
+result := try(
+    10 / 0
+) catch(Exception, e,
+    0  // Default value on error
+)
+result println  // 0
+
+// Pattern: Result or default
+safeDiv := method(a, b,
+    try(a / b) catch(Exception, 0)
+)
+
+safeDiv(10, 2) println  // 5
+safeDiv(10, 0) println  // 0</code></pre></div></div><h2 id="exception-propagation">Exception Propagation</h2><div class="section"><div class="section-body"><p>Exceptions bubble up through the call stack:</p><pre><code>level3 := method(
+    Exception raise("Error at level 3")
+)
+
+level2 := method(
+    "Level 2 start" println
+    level3()
+    "Level 2 end" println  // Never reached
+)
+
+level1 := method(
+    "Level 1 start" println
+    level2()
+    "Level 1 end" println  // Never reached
+)
+
+try(
+    level1()
+) catch(Exception, e,
+    ("Caught at top level: " .. e message) println
+)
+// Level 1 start
+// Level 2 start
+// Caught at top level: Error at level 3</code></pre></div></div><h2 id="rethrowing-exceptions">Rethrowing Exceptions</h2><div class="section"><div class="section-body"><pre><code>processFile := method(filename,
+    try(
+        file := File with(filename) openForReading
+        // Process file
+    ) catch(Exception, e,
+        ("Failed to process " .. filename) println
+        e raise  // Rethrow the original exception
+    )
+)
+
+try(
+    processFile("nonexistent.txt")
+) catch(Exception, e,
+    "Caught rethrown exception" println
+)</code></pre></div></div><h2 id="error-recovery-patterns">Error Recovery Patterns</h2><div class="section"><div class="section-body"><h3 id="retry-pattern">Retry Pattern</h3><pre><code>retryOperation := method(operation, maxAttempts,
+    attempts := 0
+    lastError := nil
+    
+    while(attempts &lt; maxAttempts,
+        attempts = attempts + 1
+        
+        e := try(
+            return operation call(attempts)
+        )
+        
+        if(e,
+            lastError = e
+            ("Attempt " .. attempts .. " failed: " .. e message) println
+            if(attempts &lt; maxAttempts, wait(0.5))
+        )
+    )
+    
+    Exception raise("All " .. maxAttempts .. " attempts failed. Last error: " .. lastError message)
+)
+
+// Usage
+result := retryOperation(
+    block(attempt,
+        if(Random value &lt; 0.7,
+            Exception raise("Random failure"),
+            "Success on attempt " .. attempt
+        )
+    ),
+    3
+)</code></pre><h3 id="circuit-breaker">Circuit Breaker</h3><pre><code>CircuitBreaker := Object clone
+CircuitBreaker init := method(threshold, timeout,
+    self failureCount := 0
+    self threshold := threshold
+    self timeout := timeout
+    self state := "closed"  // closed, open, half-open
+    self lastFailureTime := nil
+    self
+)
+
+CircuitBreaker call := method(operation,
+    if(state == "open",
+        if(Date now - lastFailureTime &gt; timeout,
+            state = "half-open"
+            "Circuit breaker entering half-open state" println,
+            Exception raise("Circuit breaker is open")
+        )
+    )
+    
+    e := try(
+        result := operation call
+        if(state == "half-open",
+            state = "closed"
+            failureCount = 0
+            "Circuit breaker closed" println
+        )
+        return result
+    )
+    
+    if(e,
+        failureCount = failureCount + 1
+        lastFailureTime = Date now
+        
+        if(failureCount &gt;= threshold,
+            state = "open"
+            "Circuit breaker opened" println
+        )
+        
+        e raise
+    )
+)
+
+// Usage
+breaker := CircuitBreaker clone init(3, 5)
+
+unreliableService := block(
+    if(Random value &lt; 0.8,
+        Exception raise("Service unavailable"),
+        "Service response"
+    )
+)
+
+5 repeat(
+    try(
+        breaker call(unreliableService) println
+    ) catch(Exception, e,
+        ("Failed: " .. e message) println
+    )
+    wait(1)
+)</code></pre></div></div><h2 id="assertion-and-validation">Assertion and Validation</h2><div class="section"><div class="section-body"><pre><code>// Simple assertion
+assert := method(condition, message,
+    if(condition not,
+        Exception raise(message ifNilEval("Assertion failed"))
+    )
+)
+
+assert(5 &gt; 3, "Math is broken")
+// assert(3 &gt; 5, "This will fail")
+
+// Validation framework
+Validator := Object clone
+Validator rules := list()
+
+Validator addRule := method(rule, message,
+    rules append(list(rule, message))
+    self
+)
+
+Validator validate := method(value,
+    errors := list()
+    
+    rules foreach(rule,
+        if(rule at(0) call(value) not,
+            errors append(rule at(1))
+        )
+    )
+    
+    if(errors size &gt; 0,
+        ValidationError clone setMessage(errors join(", ")) raise
+    )
+    
+    value
+)
+
+// Usage
+ageValidator := Validator clone \
+    addRule(block(v, v isKindOf(Number)), "Must be a number") \
+    addRule(block(v, v &gt;= 0), "Must be non-negative") \
+    addRule(block(v, v &lt;= 150), "Must be realistic")
+
+try(
+    ageValidator validate(25) println  // 25
+    ageValidator validate(-5)  // Throws
+) catch(ValidationError, e,
+    e message println  // Must be non-negative
+)</code></pre></div></div><h2 id="exception-context-and-debugging">Exception Context and Debugging</h2><div class="section"><div class="section-body"><pre><code>// Enhanced exception with context
+ContextualException := Exception clone
+ContextualException context := Map clone
+
+ContextualException addContext := method(key, value,
+    context atPut(key, value)
+    self
+)
+
+ContextualException describe := method(
+    result := message .. "\nContext:\n"
+    context foreach(key, value,
+        result = result .. "  " .. key .. ": " .. value .. "\n"
+    )
+    result
+)
+
+// Usage
+processUser := method(userData,
+    if(userData at("age") &lt; 18,
+        ContextualException clone \
+            setMessage("User too young") \
+            addContext("userId", userData at("id")) \
+            addContext("age", userData at("age")) \
+            addContext("timestamp", Date now) \
+            raise
+    )
+)
+
+try(
+    processUser(Map with("id", 123, "age", 16))
+) catch(ContextualException, e,
+    e describe println
+)</code></pre></div></div><h2 id="resource-management">Resource Management</h2><div class="section"><div class="section-body"><pre><code>// RAII-style resource management
+withResource := method(resourceCreator, resourceUser,
+    resource := nil
+    try(
+        resource = resourceCreator call
+        resourceUser call(resource)
+    ) finally(
+        if(resource and resource hasSlot("close"),
+            resource close
+        )
+    )
+)
+
+// Usage
+withResource(
+    block(File with("test.txt") openForReading),
+    block(file,
+        file contents println
+    )
+)
+
+// Database connection example
+withConnection := method(dbUrl, operation,
+    conn := nil
+    try(
+        conn = Database connect(dbUrl)
+        conn beginTransaction
+        result := operation call(conn)
+        conn commit
+        result
+    ) catch(Exception, e,
+        if(conn, conn rollback)
+        e raise
+    ) finally(
+        if(conn, conn close)
+    )
+)</code></pre></div></div><h2 id="global-exception-handling">Global Exception Handling</h2><div class="section"><div class="section-body"><pre><code>// Install global exception handler
+System handleException := method(e,
+    logFile := File with("errors.log") openForAppending
+    logFile write(Date now asString .. " - " .. e message .. "\n")
+    logFile close
+    
+    // Original behavior
+    e showStack
+    System exit(1)
+)
+
+// Uncaught exceptions now get logged
+// Exception raise("Uncaught error")</code></pre></div></div><h2 id="testing-with-exceptions">Testing with Exceptions</h2><div class="section"><div class="section-body"><pre><code>// Test framework with exception support
+Test := Object clone
+Test assertRaises := method(exceptionType, block,
+    raised := false
+    try(
+        block call
+    ) catch(Exception, e,
+        if(e type == exceptionType type,
+            raised = true,
+            Exception raise("Wrong exception type: expected " .. exceptionType type .. ", got " .. e type)
+        )
+    )
+    
+    if(raised not,
+        Exception raise("Expected exception " .. exceptionType type .. " was not raised")
+    )
+)
+
+// Usage
+Test assertRaises(ValidationError, block(
+    validateEmail("invalid")
+))
+"Test passed" println</code></pre></div></div><h2 id="performance-considerations">Performance Considerations</h2><div class="section"><div class="section-body"><pre><code>// Exceptions have overhead
+benchmark := method(name, iterations, block,
+    start := Date now
+    iterations repeat(block)
+    elapsed := Date now - start
+    (name .. ": " .. elapsed) println
+)
+
+// Without exceptions
+benchmark("No exceptions", 100000, block(
+    if(Random value &lt; 0.1, nil, "success")
+))
+
+// With exceptions
+benchmark("With exceptions", 100000, block(
+    try(
+        if(Random value &lt; 0.1, Exception raise("error"))
+        "success"
+    ) catch(Exception, nil)
+))
+
+// Exceptions are slower - use for exceptional cases, not control flow</code></pre></div></div><h2 id="common-pitfalls">Common Pitfalls</h2><div class="section"><div class="section-body"><h3 id="catching-too-broadly">Catching Too Broadly</h3><pre><code>// BAD: Catches everything, hiding bugs
+try(
+    complexOperation()
+) catch(Exception, e,
+    // Silently ignore all errors
+)
+
+// GOOD: Catch specific exceptions
+try(
+    complexOperation()
+) catch(NetworkError, e,
+    handleNetworkError(e)
+) catch(ValidationError, e,
+    handleValidationError(e)
+)</code></pre><h3 id="resource-leaks">Resource Leaks</h3><pre><code>// BAD: File not closed on error
+file := File with("data.txt") openForReading
+processFile(file)  // If this throws, file never closes
+file close
+
+// GOOD: Use finally
+file := nil
+try(
+    file = File with("data.txt") openForReading
+    processFile(file)
+) finally(
+    if(file, file close)
+)</code></pre></div></div><h2 id="exercises">Exercises</h2><div class="section"><div class="section-body"><ol><li><strong>Result Type</strong>: Implement a Result type that can be either Ok(value) or Error(error), similar to Rust.</li><li><strong>Retry with Exponential Backoff</strong>: Create a retry mechanism with exponential backoff and jitter.</li><li><strong>Exception Logger</strong>: Build a logging system that captures and categorizes exceptions.</li><li><strong>Validation Chain</strong>: Create a validation system that accumulates all errors instead of failing on first.</li><li><strong>Async Exception Handling</strong>: Implement exception handling for coroutine-based async operations.</li></ol></div></div><h2 id="real-world-example-http-client-with-error-handling">Real-World Example: HTTP Client with Error Handling</h2><div class="section"><div class="section-body"><pre><code>HttpClient := Object clone
+HttpClient timeoutMs := 5000
+HttpClient maxRetries := 3
+
+HttpError := Exception clone
+HttpError statusCode := nil
+
+HttpClient get := method(url,
+    retryCount := 0
+    
+    loop(
+        try(
+            response := self doRequest(url)
+            
+            if(response statusCode &gt;= 200 and response statusCode &lt; 300,
+                return response body
+            )
+            
+            if(response statusCode &gt;= 400 and response statusCode &lt; 500,
+                // Client error - don't retry
+                HttpError clone \
+                    setMessage("HTTP " .. response statusCode) \
+                    setSlot("statusCode", response statusCode) \
+                    raise
+            )
+            
+            // Server error - might retry
+            if(response statusCode &gt;= 500,
+                error := HttpError clone \
+                    setMessage("Server error: " .. response statusCode) \
+                    setSlot("statusCode", response statusCode)
+                
+                if(retryCount &lt; maxRetries,
+                    retryCount = retryCount + 1
+                    delay := (2 pow(retryCount)) * 100
+                    ("Retry " .. retryCount .. " after " .. delay .. "ms") println
+                    wait(delay / 1000)
+                    continue,
+                    error raise
+                )
+            )
+            
+        ) catch(NetworkError, e,
+            if(retryCount &lt; maxRetries,
+                retryCount = retryCount + 1
+                ("Network error, retry " .. retryCount) println
+                wait(1)
+                continue,
+                e raise
+            )
+        )
+    )
+)
+
+// Usage with comprehensive error handling
+fetchUserData := method(userId,
+    try(
+        data := HttpClient get("https://api.example.com/users/" .. userId)
+        JSON parse(data)
+    ) catch(HttpError, e,
+        if(e statusCode == 404,
+            nil,  // User not found
+            if(e statusCode == 401,
+                Exception raise("Authentication required"),
+                Exception raise("HTTP error: " .. e statusCode)
+            )
+        )
+    ) catch(NetworkError, e,
+        Exception raise("Network unavailable")
+    ) catch(Exception, e,
+        Exception raise("Unexpected error: " .. e message)
+    )
+)</code></pre></div></div><h2 id="conclusion">Conclusion</h2><div class="section"><div class="section-body"><p>Io's exception system demonstrates the language's consistency: exceptions are objects, throwing is a message, and catching is a method. This uniformity makes the system easy to understand while remaining powerful enough for sophisticated error handling.</p><p>The key to effective exception handling in Io is understanding when to use exceptions (for exceptional circumstances) versus return values (for expected conditions), and ensuring proper resource cleanup with <code>finally</code> blocks. Custom exception types and contextual information make debugging easier, while patterns like retry logic and circuit breakers add robustness to applications.</p></div></div><div class="page-footer"><a class="next-link" href="../Metaprogramming/index.html">Metaprogramming &rarr;</a></div></div>
+<script src="../colvmn/layout/bundle.js" defer></script>
+  <script type="application/json" id="colvmn-prefetch">{"./_index.json":{"ok":false,"status":404},"./_index.md":{"ok":true,"status":200,"content":"---\ntitle: Exceptions\ntopTitle: Io\nsubtitle: \"Error handling built, like everything else, from objects and messages.\"\nnextSectionLink: true\n---\n\nError handling is crucial for robust programs. Io provides an exception system that, like everything else in the language, is built on objects and messages. This chapter explores how exceptions work, how to handle errors gracefully, and how to create custom exception types.\n\n## Basic Exception Handling\n\nIo uses `try`, `catch`, and `raise` for exception handling:\n\n```io\n// Basic try-catch\ntry(\n    10 / 0  // Division by zero\n) catch(Exception, e,\n    (\"Error: \" .. e message) println\n)\n// Error: divide by zero\n\n// Multiple catch blocks\ntry(\n    someRiskyOperation()\n) catch(TypeError, e,\n    \"Type error occurred\" println\n) catch(IOException, e,\n    \"IO error occurred\" println\n) catch(Exception, e,\n    \"Some other error occurred\" println\n)\n```\n\nCompare with other languages:\n\n```python\n# Python\ntry:\n    result = 10 / 0\nexcept ZeroDivisionError as e:\n    print(f\"Error: {e}\")\n```\n\n```java\n// Java\ntry {\n    int result = 10 / 0;\n} catch (ArithmeticException e) {\n    System.out.println(\"Error: \" + e.getMessage());\n}\n```\n\n## Raising Exceptions\n\n```io\n// Raise a simple exception\nException raise(\"Something went wrong\")\n\n// Raise with more information\ne := Exception clone\ne setMessage(\"File not found\")\ne raise\n\n// Conditional raising\nvalidateAge := method(age,\n    if(age \u003c 0, Exception raise(\"Age cannot be negative\"))\n    if(age > 150, Exception raise(\"Age seems unrealistic\"))\n    age\n)\n\ntry(\n    validateAge(-5)\n) catch(Exception, e,\n    e message println  // Age cannot be negative\n)\n```\n\n## Exception Objects\n\nExceptions are just objects:\n\n```io\n// Examine exception structure\ne := Exception clone\ne type println           // Exception\ne proto println          // Object_0x...\n\n// Exception slots\ne setMessage(\"Test error\")\ne message println        // Test error\n\n// Stack trace\ntry(\n    Exception raise(\"Test\")\n) catch(Exception, e,\n    e showStack  // Prints full stack trace\n    e coroutine println  // The coroutine where error occurred\n)\n```\n\n## Creating Custom Exceptions\n\n```io\n// Define custom exception types\nValidationError := Exception clone\nValidationError type := \"ValidationError\"\n\nNetworkError := Exception clone\nNetworkError type := \"NetworkError\"\nNetworkError code := nil\nNetworkError setCode := method(c, self code = c; self)\n\n// Use custom exceptions\nvalidateEmail := method(email,\n    if(email containsSeq(\"@\") not,\n        ValidationError clone setMessage(\"Invalid email format\") raise\n    )\n    email\n)\n\nfetchData := method(url,\n    // Simulate network error\n    if(Random value \u003c 0.3,\n        NetworkError clone setMessage(\"Connection timeout\") setCode(408) raise\n    )\n    \"data\"\n)\n\n// Handle specific exception types\ntry(\n    validateEmail(\"badEmail\")\n) catch(ValidationError, e,\n    (\"Validation failed: \" .. e message) println\n) catch(Exception, e,\n    (\"Unexpected error: \" .. e message) println\n)\n```\n\n## The finally Block\n\n```io\n// Ensure cleanup with finally\nfile := nil\ntry(\n    file = File with(\"data.txt\") openForReading\n    contents := file contents\n    processData(contents)\n) catch(Exception, e,\n    (\"Error reading file: \" .. e message) println\n) finally(\n    if(file, file close)\n    \"Cleanup complete\" println\n)\n\n// finally always executes\nresult := try(\n    \"Success\" println\n    42\n) catch(Exception, e,\n    \"Error\" println\n    0\n) finally(\n    \"Always runs\" println\n)\n// Prints: Success, Always runs\nresult println  // 42\n```\n\n## Return Values and Exceptions\n\n```io\n// try returns a value\nresult := try(\n    10 / 2\n) catch(Exception, e,\n    0  // Default value on error\n)\nresult println  // 5\n\n// With error\nresult := try(\n    10 / 0\n) catch(Exception, e,\n    0  // Default value on error\n)\nresult println  // 0\n\n// Pattern: Result or default\nsafeDiv := method(a, b,\n    try(a / b) catch(Exception, 0)\n)\n\nsafeDiv(10, 2) println  // 5\nsafeDiv(10, 0) println  // 0\n```\n\n## Exception Propagation\n\nExceptions bubble up through the call stack:\n\n```io\nlevel3 := method(\n    Exception raise(\"Error at level 3\")\n)\n\nlevel2 := method(\n    \"Level 2 start\" println\n    level3()\n    \"Level 2 end\" println  // Never reached\n)\n\nlevel1 := method(\n    \"Level 1 start\" println\n    level2()\n    \"Level 1 end\" println  // Never reached\n)\n\ntry(\n    level1()\n) catch(Exception, e,\n    (\"Caught at top level: \" .. e message) println\n)\n// Level 1 start\n// Level 2 start\n// Caught at top level: Error at level 3\n```\n\n## Rethrowing Exceptions\n\n```io\nprocessFile := method(filename,\n    try(\n        file := File with(filename) openForReading\n        // Process file\n    ) catch(Exception, e,\n        (\"Failed to process \" .. filename) println\n        e raise  // Rethrow the original exception\n    )\n)\n\ntry(\n    processFile(\"nonexistent.txt\")\n) catch(Exception, e,\n    \"Caught rethrown exception\" println\n)\n```\n\n## Error Recovery Patterns\n\n### Retry Pattern\n\n```io\nretryOperation := method(operation, maxAttempts,\n    attempts := 0\n    lastError := nil\n    \n    while(attempts \u003c maxAttempts,\n        attempts = attempts + 1\n        \n        e := try(\n            return operation call(attempts)\n        )\n        \n        if(e,\n            lastError = e\n            (\"Attempt \" .. attempts .. \" failed: \" .. e message) println\n            if(attempts \u003c maxAttempts, wait(0.5))\n        )\n    )\n    \n    Exception raise(\"All \" .. maxAttempts .. \" attempts failed. Last error: \" .. lastError message)\n)\n\n// Usage\nresult := retryOperation(\n    block(attempt,\n        if(Random value \u003c 0.7,\n            Exception raise(\"Random failure\"),\n            \"Success on attempt \" .. attempt\n        )\n    ),\n    3\n)\n```\n\n### Circuit Breaker\n\n```io\nCircuitBreaker := Object clone\nCircuitBreaker init := method(threshold, timeout,\n    self failureCount := 0\n    self threshold := threshold\n    self timeout := timeout\n    self state := \"closed\"  // closed, open, half-open\n    self lastFailureTime := nil\n    self\n)\n\nCircuitBreaker call := method(operation,\n    if(state == \"open\",\n        if(Date now - lastFailureTime > timeout,\n            state = \"half-open\"\n            \"Circuit breaker entering half-open state\" println,\n            Exception raise(\"Circuit breaker is open\")\n        )\n    )\n    \n    e := try(\n        result := operation call\n        if(state == \"half-open\",\n            state = \"closed\"\n            failureCount = 0\n            \"Circuit breaker closed\" println\n        )\n        return result\n    )\n    \n    if(e,\n        failureCount = failureCount + 1\n        lastFailureTime = Date now\n        \n        if(failureCount >= threshold,\n            state = \"open\"\n            \"Circuit breaker opened\" println\n        )\n        \n        e raise\n    )\n)\n\n// Usage\nbreaker := CircuitBreaker clone init(3, 5)\n\nunreliableService := block(\n    if(Random value \u003c 0.8,\n        Exception raise(\"Service unavailable\"),\n        \"Service response\"\n    )\n)\n\n5 repeat(\n    try(\n        breaker call(unreliableService) println\n    ) catch(Exception, e,\n        (\"Failed: \" .. e message) println\n    )\n    wait(1)\n)\n```\n\n## Assertion and Validation\n\n```io\n// Simple assertion\nassert := method(condition, message,\n    if(condition not,\n        Exception raise(message ifNilEval(\"Assertion failed\"))\n    )\n)\n\nassert(5 > 3, \"Math is broken\")\n// assert(3 > 5, \"This will fail\")\n\n// Validation framework\nValidator := Object clone\nValidator rules := list()\n\nValidator addRule := method(rule, message,\n    rules append(list(rule, message))\n    self\n)\n\nValidator validate := method(value,\n    errors := list()\n    \n    rules foreach(rule,\n        if(rule at(0) call(value) not,\n            errors append(rule at(1))\n        )\n    )\n    \n    if(errors size > 0,\n        ValidationError clone setMessage(errors join(\", \")) raise\n    )\n    \n    value\n)\n\n// Usage\nageValidator := Validator clone \\\n    addRule(block(v, v isKindOf(Number)), \"Must be a number\") \\\n    addRule(block(v, v >= 0), \"Must be non-negative\") \\\n    addRule(block(v, v \u003c= 150), \"Must be realistic\")\n\ntry(\n    ageValidator validate(25) println  // 25\n    ageValidator validate(-5)  // Throws\n) catch(ValidationError, e,\n    e message println  // Must be non-negative\n)\n```\n\n## Exception Context and Debugging\n\n```io\n// Enhanced exception with context\nContextualException := Exception clone\nContextualException context := Map clone\n\nContextualException addContext := method(key, value,\n    context atPut(key, value)\n    self\n)\n\nContextualException describe := method(\n    result := message .. \"\\nContext:\\n\"\n    context foreach(key, value,\n        result = result .. \"  \" .. key .. \": \" .. value .. \"\\n\"\n    )\n    result\n)\n\n// Usage\nprocessUser := method(userData,\n    if(userData at(\"age\") \u003c 18,\n        ContextualException clone \\\n            setMessage(\"User too young\") \\\n            addContext(\"userId\", userData at(\"id\")) \\\n            addContext(\"age\", userData at(\"age\")) \\\n            addContext(\"timestamp\", Date now) \\\n            raise\n    )\n)\n\ntry(\n    processUser(Map with(\"id\", 123, \"age\", 16))\n) catch(ContextualException, e,\n    e describe println\n)\n```\n\n## Resource Management\n\n```io\n// RAII-style resource management\nwithResource := method(resourceCreator, resourceUser,\n    resource := nil\n    try(\n        resource = resourceCreator call\n        resourceUser call(resource)\n    ) finally(\n        if(resource and resource hasSlot(\"close\"),\n            resource close\n        )\n    )\n)\n\n// Usage\nwithResource(\n    block(File with(\"test.txt\") openForReading),\n    block(file,\n        file contents println\n    )\n)\n\n// Database connection example\nwithConnection := method(dbUrl, operation,\n    conn := nil\n    try(\n        conn = Database connect(dbUrl)\n        conn beginTransaction\n        result := operation call(conn)\n        conn commit\n        result\n    ) catch(Exception, e,\n        if(conn, conn rollback)\n        e raise\n    ) finally(\n        if(conn, conn close)\n    )\n)\n```\n\n## Global Exception Handling\n\n```io\n// Install global exception handler\nSystem handleException := method(e,\n    logFile := File with(\"errors.log\") openForAppending\n    logFile write(Date now asString .. \" - \" .. e message .. \"\\n\")\n    logFile close\n    \n    // Original behavior\n    e showStack\n    System exit(1)\n)\n\n// Uncaught exceptions now get logged\n// Exception raise(\"Uncaught error\")\n```\n\n## Testing with Exceptions\n\n```io\n// Test framework with exception support\nTest := Object clone\nTest assertRaises := method(exceptionType, block,\n    raised := false\n    try(\n        block call\n    ) catch(Exception, e,\n        if(e type == exceptionType type,\n            raised = true,\n            Exception raise(\"Wrong exception type: expected \" .. exceptionType type .. \", got \" .. e type)\n        )\n    )\n    \n    if(raised not,\n        Exception raise(\"Expected exception \" .. exceptionType type .. \" was not raised\")\n    )\n)\n\n// Usage\nTest assertRaises(ValidationError, block(\n    validateEmail(\"invalid\")\n))\n\"Test passed\" println\n```\n\n## Performance Considerations\n\n```io\n// Exceptions have overhead\nbenchmark := method(name, iterations, block,\n    start := Date now\n    iterations repeat(block)\n    elapsed := Date now - start\n    (name .. \": \" .. elapsed) println\n)\n\n// Without exceptions\nbenchmark(\"No exceptions\", 100000, block(\n    if(Random value \u003c 0.1, nil, \"success\")\n))\n\n// With exceptions\nbenchmark(\"With exceptions\", 100000, block(\n    try(\n        if(Random value \u003c 0.1, Exception raise(\"error\"))\n        \"success\"\n    ) catch(Exception, nil)\n))\n\n// Exceptions are slower - use for exceptional cases, not control flow\n```\n\n## Common Pitfalls\n\n### Catching Too Broadly\n\n```io\n// BAD: Catches everything, hiding bugs\ntry(\n    complexOperation()\n) catch(Exception, e,\n    // Silently ignore all errors\n)\n\n// GOOD: Catch specific exceptions\ntry(\n    complexOperation()\n) catch(NetworkError, e,\n    handleNetworkError(e)\n) catch(ValidationError, e,\n    handleValidationError(e)\n)\n```\n\n### Resource Leaks\n\n```io\n// BAD: File not closed on error\nfile := File with(\"data.txt\") openForReading\nprocessFile(file)  // If this throws, file never closes\nfile close\n\n// GOOD: Use finally\nfile := nil\ntry(\n    file = File with(\"data.txt\") openForReading\n    processFile(file)\n) finally(\n    if(file, file close)\n)\n```\n\n## Exercises\n\n1. **Result Type**: Implement a Result type that can be either Ok(value) or Error(error), similar to Rust.\n\n2. **Retry with Exponential Backoff**: Create a retry mechanism with exponential backoff and jitter.\n\n3. **Exception Logger**: Build a logging system that captures and categorizes exceptions.\n\n4. **Validation Chain**: Create a validation system that accumulates all errors instead of failing on first.\n\n5. **Async Exception Handling**: Implement exception handling for coroutine-based async operations.\n\n## Real-World Example: HTTP Client with Error Handling\n\n```io\nHttpClient := Object clone\nHttpClient timeoutMs := 5000\nHttpClient maxRetries := 3\n\nHttpError := Exception clone\nHttpError statusCode := nil\n\nHttpClient get := method(url,\n    retryCount := 0\n    \n    loop(\n        try(\n            response := self doRequest(url)\n            \n            if(response statusCode >= 200 and response statusCode \u003c 300,\n                return response body\n            )\n            \n            if(response statusCode >= 400 and response statusCode \u003c 500,\n                // Client error - don't retry\n                HttpError clone \\\n                    setMessage(\"HTTP \" .. response statusCode) \\\n                    setSlot(\"statusCode\", response statusCode) \\\n                    raise\n            )\n            \n            // Server error - might retry\n            if(response statusCode >= 500,\n                error := HttpError clone \\\n                    setMessage(\"Server error: \" .. response statusCode) \\\n                    setSlot(\"statusCode\", response statusCode)\n                \n                if(retryCount \u003c maxRetries,\n                    retryCount = retryCount + 1\n                    delay := (2 pow(retryCount)) * 100\n                    (\"Retry \" .. retryCount .. \" after \" .. delay .. \"ms\") println\n                    wait(delay / 1000)\n                    continue,\n                    error raise\n                )\n            )\n            \n        ) catch(NetworkError, e,\n            if(retryCount \u003c maxRetries,\n                retryCount = retryCount + 1\n                (\"Network error, retry \" .. retryCount) println\n                wait(1)\n                continue,\n                e raise\n            )\n        )\n    )\n)\n\n// Usage with comprehensive error handling\nfetchUserData := method(userId,\n    try(\n        data := HttpClient get(\"https://api.example.com/users/\" .. userId)\n        JSON parse(data)\n    ) catch(HttpError, e,\n        if(e statusCode == 404,\n            nil,  // User not found\n            if(e statusCode == 401,\n                Exception raise(\"Authentication required\"),\n                Exception raise(\"HTTP error: \" .. e statusCode)\n            )\n        )\n    ) catch(NetworkError, e,\n        Exception raise(\"Network unavailable\")\n    ) catch(Exception, e,\n        Exception raise(\"Unexpected error: \" .. e message)\n    )\n)\n```\n\n## Conclusion\n\nIo's exception system demonstrates the language's consistency: exceptions are objects, throwing is a message, and catching is a method. This uniformity makes the system easy to understand while remaining powerful enough for sophisticated error handling.\n\nThe key to effective exception handling in Io is understanding when to use exceptions (for exceptional circumstances) versus return values (for expected conditions), and ensuring proper resource cleanup with `finally` blocks. Custom exception types and contextual information make debugging easier, while patterns like retry logic and circuit breakers add robustness to applications.\n"},"../_index.json":{"ok":true,"status":200,"content":"{\n  \"title\": \"The Io Programming Language\",\n  \"topTitle\": \"Io\",\n  \"subtitle\": \"A comprehensive guide to prototype-based programming with Io.\",\n  \"content\": [\n    {\n      \"type\": \"ContentText\",\n      \"content\": \"This book provides an in-depth exploration of the Io programming language, designed for experienced programmers who want to understand prototype-based object-oriented programming. Through detailed comparisons with mainstream languages like JavaScript, Python, Ruby, and Java, readers will gain practical insights into Io's unique paradigm.\"\n    },\n    {\n      \"type\": \"ContentCards\",\n      \"title\": \"Chapters\",\n      \"columns\": 2,\n      \"items\": [\n        \"Preface\",\n        \"Introduction\",\n        \"Getting-Started\",\n        \"Everything-is-an-Object\",\n        \"Prototypes-Not-Classes\",\n        \"Messages-and-Slots\",\n        \"Cloning-and-Inheritance\",\n        \"Control-Flow\",\n        \"Collections\",\n        \"Blocks-and-Closures\",\n        \"Exceptions\",\n        \"Metaprogramming\",\n        \"Concurrency\",\n        \"Domain-Specific-Languages\",\n        \"C-Integration\",\n        \"Real-World-Patterns\",\n        \"Case-Studies\",\n        \"Ecosystem-and-Libraries\",\n        \"Conclusion\"\n      ]\n    }\n  ]\n}\n"},"../Metaprogramming/_index.json":{"ok":false,"status":404},"../Metaprogramming/_index.md":{"ok":true,"status":200,"content":"---\ntitle: Metaprogramming\ntopTitle: Io\nsubtitle: \"Inspecting, modifying, and generating code at runtime.\"\nnextSectionLink: true\n---\n\nMetaprogramming—writing code that manipulates code—is where Io truly shines. Since everything in Io is an object, including messages and methods, you can inspect, modify, and generate code at runtime. This chapter explores Io's powerful metaprogramming capabilities.\n\n## Messages as Data\n\nIn Io, code is data. Messages are objects you can create, inspect, and manipulate:\n\n```io\n// Create a message from code\nmsg := message(2 + 3 * 4)\n\n// Inspect its structure\nmsg println              // 2 +(3 *(4))\nmsg name println         // +\nmsg arguments println    // list(Message_0x...)\nmsg arguments at(0) println  // 3 *(4)\n\n// Evaluate it\nresult := msg doInContext(Lobby)\nresult println           // 14\n\n// Modify it\nmsg setName(\"*\")\nmsg doInContext(Lobby) println  // 6 (now it's 2 * 3 * 4)\n```\n\nCompare this to Lisp's code-as-data philosophy:\n\n```lisp\n; Lisp\n(defparameter code '(+ 2 (* 3 4)))\n(eval code)  ; 14\n```\n\nBut Io uses messages instead of lists, which feels more natural for object-oriented code.\n\n## Building Messages Programmatically\n\n```io\n// Build a message from scratch\nmsg := Message clone\nmsg setName(\"println\")\nmsg setArguments(list(Message clone setName(\"\\\"Hello, World!\\\"\")))\n\n// Execute it\nLobby doMessage(msg)  // Hello, World!\n\n// Build more complex messages\ncreateAdder := method(n,\n    msg := Message clone setName(\"+\")\n    msg setArguments(list(Message clone setName(n asString)))\n    msg\n)\n\nadder5 := createAdder(5)\n7 doMessage(adder5) println  // 12\n```\n\n## Method Introspection\n\nMethods are objects you can examine and modify:\n\n```io\nobj := Object clone\nobj greet := method(name, \"Hello, \" .. name .. \"!\")\n\n// Get the method object\nm := obj getSlot(\"greet\")\nm type println                    // Block\nm argumentNames println           // list(name)\nm code println                   // \"Hello, \" ..(name) ..(\"!\")\n\n// Modify method implementation\nobj greet = method(name, \"Goodbye, \" .. name .. \"!\")\nobj greet(\"World\") println       // Goodbye, World!\n\n// Copy methods between objects\nother := Object clone\nother sayHi := obj getSlot(\"greet\")\nother sayHi(\"Io\") println        // Goodbye, Io!\n```\n\n## The call Object\n\nThe `call` object provides runtime context information:\n\n```io\nObject introspect := method(\n    \"=== Call Introspection ===\" println\n    (\"Sender: \" .. call sender type) println\n    (\"Target: \" .. call target type) println\n    (\"Message: \" .. call message) println\n    (\"Arguments: \" .. call message arguments) println\n    (\"Activated: \" .. call activated) println\n    \"========================\" println\n)\n\nTestObj := Object clone\nTestObj test := method(a, b,\n    introspect\n    a + b\n)\n\nTestObj test(5, 3)\n// === Call Introspection ===\n// Sender: Lobby\n// Target: TestObj\n// Message: introspect\n// Arguments: list()\n// Activated: method(...)\n// ========================\n```\n\n## Dynamic Method Creation\n\nCreate methods at runtime:\n\n```io\n// Create getters and setters dynamically\nObject addProperty := method(name, defaultValue,\n    // Create storage slot\n    self setSlot(\"_\" .. name, defaultValue)\n    \n    // Create getter\n    self setSlot(name, \n        method(self getSlot(\"_\" .. call message name))\n    )\n    \n    // Create setter\n    self setSlot(\"set\" .. name asCapitalized,\n        method(value,\n            self setSlot(\"_\" .. call message name beforeSeq(\"set\") asLowercase, value)\n            self  // For chaining\n        )\n    )\n)\n\nPerson := Object clone\nPerson addProperty(\"name\", \"Unknown\")\nPerson addProperty(\"age\", 0)\n\np := Person clone\np setName(\"Alice\") setAge(30)\np name println   // Alice\np age println    // 30\n```\n\n## Method Missing Pattern\n\nIntercept undefined method calls:\n\n```io\nDynamicObject := Object clone\nDynamicObject forward := method(\n    messageName := call message name\n    args := call message arguments\n    \n    (\"Intercepted: \" .. messageName) println\n    (\"Arguments: \" .. args) println\n    \n    // Handle dynamically\n    if(messageName beginsWithSeq(\"get\"),\n        property := messageName afterSeq(\"get\") asLowercase\n        return self getSlot(property)\n    )\n    \n    if(messageName beginsWithSeq(\"set\"),\n        property := messageName afterSeq(\"set\") asLowercase\n        value := call evalArgAt(0)\n        return self setSlot(property, value)\n    )\n    \n    Exception raise(\"Unknown method: \" .. messageName)\n)\n\nobj := DynamicObject clone\nobj setName(\"Bob\")      // Intercepted: setName\nobj getName println      // Bob\n```\n\n## Code Generation\n\nGenerate code as strings and evaluate:\n\n```io\n// Generate a class-like structure\ngenerateClass := method(className, properties,\n    code := className .. \" := Object clone\\n\"\n    \n    // Generate init method\n    code = code .. className .. \" init := method(\\n\"\n    properties foreach(prop,\n        code = code .. \"    self \" .. prop .. \" := nil\\n\"\n    )\n    code = code .. \"    self\\n)\\n\"\n    \n    // Generate property accessors\n    properties foreach(prop,\n        // Getter\n        code = code .. className .. \" \" .. prop .. \" := method(_\" .. prop .. \")\\n\"\n        // Setter\n        code = code .. className .. \" set\" .. prop asCapitalized .. \" := method(v, _\" .. prop .. \" = v; self)\\n\"\n    )\n    \n    code doString  // Evaluate the generated code\n    Lobby getSlot(className)  // Return the created object\n)\n\n// Use the generator\nCar := generateClass(\"Car\", list(\"make\", \"model\", \"year\"))\nmyCar := Car clone init\nmyCar setMake(\"Toyota\") setModel(\"Camry\") setYear(2020)\nmyCar make println  // Toyota\n```\n\n## Aspect-Oriented Programming\n\nImplement cross-cutting concerns:\n\n```io\n// Method wrapping for logging\nObject addLogging := method(methodName,\n    original := self getSlot(methodName)\n    \n    self setSlot(methodName, method(\n        (\"Calling \" .. methodName .. \" with args: \" .. call message arguments) println\n        result := nil\n        e := try(result = original doMessage(call message, call sender))\n        if(e,\n            (\"Error in \" .. methodName .. \": \" .. e message) println\n            e raise,\n            (\"Returned: \" .. result) println\n            result\n        )\n    ))\n)\n\nCalculator := Object clone\nCalculator add := method(a, b, a + b)\nCalculator divide := method(a, b, a / b)\n\nCalculator addLogging(\"add\")\nCalculator addLogging(\"divide\")\n\nCalculator add(5, 3)\n// Calling add with args: list(5, 3)\n// Returned: 8\n\nCalculator divide(10, 0)\n// Calling divide with args: list(10, 0)\n// Error in divide: divide by zero\n```\n\n## Macro System\n\nIo's macros transform code before evaluation:\n\n```io\n// Define a macro\nObject unless := macro(condition, action,\n    // Macros receive unevaluated arguments as messages\n    // Transform to if(condition not, action)\n    message(if) setArguments(\n        list(\n            message(not) setTarget(condition),\n            action\n        )\n    )\n)\n\n// Use the macro\nx := 5\nunless(x > 10, \"x is not greater than 10\" println)\n// x is not greater than 10\n\n// Timing macro\nObject time := macro(code,\n    // Generate timing code\n    message(do) setArguments(list(\n        message(start := Date now),\n        code,\n        message(elapsed := Date now - start),\n        message((\"Elapsed: \" .. elapsed) println),\n        message(result)\n    ))\n)\n\n// Use it\ntime(\n    sum := 0\n    for(i, 1, 1000000, sum = sum + i)\n    sum\n)\n// Elapsed: 0.234\n```\n\n## Self-Modifying Code\n\nObjects can modify their own methods:\n\n```io\nCounter := Object clone\nCounter count := 0\nCounter increment := method(\n    count = count + 1\n    \n    // Self-modify after 5 calls\n    if(count >= 5,\n        self increment = method(\n            Exception raise(\"Counter limit reached\")\n        )\n    )\n    \n    count\n)\n\nc := Counter clone\n5 repeat(i, c increment println)  // 1, 2, 3, 4, 5\nc increment  // Exception: Counter limit reached\n```\n\n## Reflection API\n\nIo provides comprehensive reflection capabilities:\n\n```io\n// Object introspection utilities\nObject describe := method(\n    (\"Type: \" .. self type) println\n    \n    \"Local Slots:\" println\n    self slotNames sort foreach(name,\n        value := self getSlot(name)\n        (\"  \" .. name .. \" = \" .. value type) println\n    )\n    \n    \"Proto chain:\" println\n    proto := self proto\n    while(proto and proto != Object,\n        (\"  -> \" .. proto type) println\n        proto = proto proto\n    )\n)\n\n// Usage\nperson := Object clone\nperson name := \"Alice\"\nperson age := 30\nperson greet := method(\"Hello!\")\n\nperson describe\n// Type: Object\n// Local Slots:\n//   age = Number\n//   greet = Block\n//   name = Sequence\n// Proto chain:\n//   -> Object\n```\n\n## DSL Creation with Metaprogramming\n\nBuild domain-specific languages:\n\n```io\n// SQL-like DSL\nTable := Object clone\nTable columns := list()\nTable rows := list()\n\nTable select := method(\n    query := SelectQuery clone\n    query table := self\n    query\n)\n\nSelectQuery := Object clone\nSelectQuery conditions := list()\n\nSelectQuery where := method(\n    // Parse conditions from arguments\n    args := call message arguments\n    args foreach(arg,\n        conditions append(arg)\n    )\n    self\n)\n\nSelectQuery execute := method(\n    table rows select(row,\n        result := true\n        conditions foreach(cond,\n            result = result and cond doInContext(row)\n        )\n        result\n    )\n)\n\n// Usage\nusers := Table clone\nusers columns = list(\"name\", \"age\", \"city\")\nusers rows = list(\n    Object clone do(name := \"Alice\"; age := 30; city := \"NYC\"),\n    Object clone do(name := \"Bob\"; age := 25; city := \"LA\"),\n    Object clone do(name := \"Charlie\"; age := 35; city := \"NYC\")\n)\n\nresults := users select where(age > 25, city == \"NYC\") execute\nresults foreach(r, (r name .. \": \" .. r age) println)\n// Alice: 30\n// Charlie: 35\n```\n\n## Performance Profiling\n\nUse metaprogramming for profiling:\n\n```io\nProfiler := Object clone\nProfiler stats := Map clone\n\nObject profile := method(methodName,\n    original := self getSlot(methodName)\n    \n    self setSlot(methodName, method(\n        start := Date now\n        result := original doMessage(call message, call sender)\n        elapsed := Date now - start\n        \n        key := self type .. \"::\" .. methodName\n        if(Profiler stats hasKey(key) not,\n            Profiler stats atPut(key, list(0, 0))\n        )\n        \n        stats := Profiler stats at(key)\n        stats atPut(0, stats at(0) + 1)      // Count\n        stats atPut(1, stats at(1) + elapsed) // Total time\n        \n        result\n    ))\n)\n\nProfiler report := method(\n    \"=== Profiling Report ===\" println\n    stats foreach(key, data,\n        avg := data at(1) / data at(0)\n        (key .. \": \" .. data at(0) .. \" calls, \" .. \n         data at(1) .. \"s total, \" .. avg .. \"s avg\") println\n    )\n)\n\n// Usage\nMath := Object clone\nMath factorial := method(n,\n    if(n \u003c= 1, 1, n * factorial(n - 1))\n)\nMath profile(\"factorial\")\n\n10 repeat(Math factorial(20))\nProfiler report\n```\n\n## Compile-Time Computation\n\nUse macros for compile-time optimization:\n\n```io\n// Macro that pre-computes constant expressions\nObject precompute := macro(expr,\n    // If expression contains only literals, evaluate now\n    result := nil\n    e := try(result = expr doInContext(Object clone))\n    \n    if(e isNil,\n        // Successfully evaluated - return literal\n        Message clone setName(result asString),\n        // Contains variables - return original\n        expr\n    )\n)\n\n// Usage\nx := 10\ny := precompute(5 * 6 + 7)  // Computed at parse time\nz := precompute(x * 2)      // Can't precompute, has variable\n\ny println  // 37 (was precomputed)\n```\n\n## Method Combination\n\nImplement method combination patterns:\n\n```io\n// Before/After/Around methods\nObject addBefore := method(methodName, beforeBlock,\n    original := self getSlot(methodName)\n    self setSlot(methodName, method(\n        beforeBlock doMessage(call message, call sender)\n        original doMessage(call message, call sender)\n    ))\n)\n\nObject addAfter := method(methodName, afterBlock,\n    original := self getSlot(methodName)\n    self setSlot(methodName, method(\n        result := original doMessage(call message, call sender)\n        afterBlock call(result)\n        result\n    ))\n)\n\nObject addAround := method(methodName, aroundBlock,\n    original := self getSlot(methodName)\n    self setSlot(methodName, method(\n        aroundBlock call(original, call message, call sender)\n    ))\n)\n\n// Usage\nBankAccount := Object clone\nBankAccount balance := 100\nBankAccount withdraw := method(amount, balance = balance - amount)\n\nBankAccount addBefore(\"withdraw\", method(amount,\n    (\"Withdrawing \" .. amount) println\n))\n\nBankAccount addAfter(\"withdraw\", method(result,\n    (\"New balance: \" .. balance) println\n))\n\nBankAccount addAround(\"withdraw\", method(original, msg, sender,\n    amount := msg argAt(0) doInContext(sender)\n    if(amount > balance,\n        Exception raise(\"Insufficient funds\"),\n        original doMessage(msg, sender)\n    )\n))\n\naccount := BankAccount clone\naccount withdraw(50)\n// Withdrawing 50\n// New balance: 50\n```\n\n## Common Pitfalls\n\n### Evaluation Context\n\n```io\n// PROBLEM: Wrong context\nmakeMethod := method(code,\n    method doString(code)  // code evaluates in method's context\n)\n\nobj := Object clone\nobj value := 10\nobj badMethod := makeMethod(\"value * 2\")\n// obj badMethod  // Error: value not found\n\n// SOLUTION: Use message objects\nmakeMethod := method(code,\n    method(code doInContext(self))\n)\n```\n\n### Performance Impact\n\n```io\n// Metaprogramming has runtime cost\ndirectCall := method(x, x * 2)\ndynamicCall := method(x,\n    msg := Message clone setName(\"*\") setArguments(list(Message clone setName(\"2\")))\n    x doMessage(msg)\n)\n\n// directCall is much faster than dynamicCall\n```\n\n## Exercises\n\n1. **Memoization Decorator**: Create a decorator that automatically memoizes any method.\n\n2. **Contract System**: Implement Design by Contract with pre/post conditions.\n\n3. **Mock Object Generator**: Build a system that generates mock objects for testing.\n\n4. **Dependency Injection**: Create a DI container using metaprogramming.\n\n5. **ORM**: Build a simple object-relational mapper that generates methods from table schemas.\n\n## Real-World Example: ActiveRecord Pattern\n\n```io\n// Simple ActiveRecord implementation\nActiveRecord := Object clone\nActiveRecord tableName := nil\nActiveRecord connection := nil  // Database connection\n\nActiveRecord findById := method(id,\n    sql := \"SELECT * FROM \" .. tableName .. \" WHERE id = \" .. id\n    row := connection execute(sql) first\n    if(row,\n        obj := self clone\n        row foreach(column, value,\n            obj setSlot(column, value)\n        )\n        obj\n    )\n)\n\nActiveRecord save := method(\n    if(hasSlot(\"id\"),\n        // Update\n        sql := \"UPDATE \" .. tableName .. \" SET \"\n        updates := list()\n        slotNames foreach(name,\n            if(name != \"id\",\n                updates append(name .. \" = '\" .. getSlot(name) .. \"'\")\n            )\n        )\n        sql = sql .. updates join(\", \") .. \" WHERE id = \" .. id\n    ,\n        // Insert\n        sql := \"INSERT INTO \" .. tableName\n        columns := list()\n        values := list()\n        slotNames foreach(name,\n            columns append(name)\n            values append(\"'\" .. getSlot(name) .. \"'\")\n        )\n        sql = sql .. \" (\" .. columns join(\", \") .. \") VALUES (\" .. values join(\", \") .. \")\"\n    )\n    \n    connection execute(sql)\n    self\n)\n\n// Generate model from table\ngenerateModel := method(name, table, columns,\n    model := ActiveRecord clone\n    model type := name\n    model tableName = table\n    \n    // Add properties\n    columns foreach(column,\n        model setSlot(column, nil)\n    )\n    \n    // Add validations\n    model validate := method(\n        // Generated validation code\n        true\n    )\n    \n    // Store in Lobby\n    Lobby setSlot(name, model)\n    model\n)\n\n// Usage\nUser := generateModel(\"User\", \"users\", list(\"id\", \"name\", \"email\", \"age\"))\n\nuser := User clone\nuser name = \"Alice\"\nuser email = \"alice@example.com\"\nuser age = 30\n// user save\n\nfoundUser := User findById(1)\n```\n\n## Conclusion\n\nMetaprogramming in Io isn't a special feature—it's a natural consequence of the language's design. When everything is an object, including code itself, manipulation becomes straightforward. Messages as first-class objects, comprehensive reflection, and runtime modification enable powerful patterns that would require complex machinery in other languages.\n\nThe key to effective metaprogramming in Io is understanding that you're not working with special metaprogramming constructs, but simply manipulating objects that happen to represent code. This uniformity makes metaprogramming accessible and powerful, though it requires careful consideration of evaluation contexts and performance implications.\n"}}</script>
+</body>
+</html>

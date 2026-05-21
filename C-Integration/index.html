@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="stylesheet" href="../colvmn/style.css">
+<title>C Integration – Io</title>
+  <link rel="alternate" type="text/plain" title="llms.txt" href="/llms.txt">
+  <meta name="description" content="Embedding Io in C and extending Io with high-performance C addons.">
+</head>
+<body>
+<div class="page loaded"><div class="header"><div><h1>C Integration</h1><a class="back-link" href="../index.html">&larr; The Io Programming Language</a></div><a class="brand" href="../index.html">Io</a></div><p class="intro">Embedding Io in C and extending Io with high-performance C addons.</p><nav class="toc"><ul><li><a href="#understanding-ios-c-architecture">Understanding Io's C Architecture</a></li><li><a href="#creating-a-simple-c-addon">Creating a Simple C Addon</a></li><li><a href="#working-with-io-objects-in-c">Working with Io Objects in C</a></li><li><a href="#creating-custom-types">Creating Custom Types</a></li><li><a href="#calling-io-from-c">Calling Io from C</a></li><li><a href="#memory-management">Memory Management</a></li><li><a href="#wrapping-c-libraries">Wrapping C Libraries</a></li><li><a href="#embedding-io-in-c-applications">Embedding Io in C Applications</a></li><li><a href="#performance-optimization">Performance Optimization</a></li><li><a href="#debugging-c-addons">Debugging C Addons</a></li><li><a href="#common-integration-patterns">Common Integration Patterns</a></li><li><a href="#build-system-integration">Build System Integration</a></li><li><a href="#exercises">Exercises</a></li><li><a href="#conclusion">Conclusion</a></li></ul></nav><div class="section"><div class="section-body"><p>Io is implemented in C and provides excellent C integration capabilities. You can extend Io with C libraries, create high-performance addons, and embed Io in C applications. This chapter explores the bidirectional relationship between Io and C.</p></div></div><h2 id="understanding-ios-c-architecture">Understanding Io's C Architecture</h2><div class="section"><div class="section-body"><p>Io's core is a small C library (around 10,000 lines) that implements:</p><ul><li>The object model (IoObject)</li><li>The message passing system</li><li>Basic types (Number, String, List, etc.)</li><li>The VM and garbage collector</li></ul><p>Everything else is built on top of this foundation, either in C addons or pure Io.</p></div></div><h2 id="creating-a-simple-c-addon">Creating a Simple C Addon</h2><div class="section"><div class="section-body"><p>Let's create a basic C addon that adds a method to calculate factorials:</p><pre><code>// factorial.c
+#include "IoState.h"
+#include "IoObject.h"
+#include "IoNumber.h"
+
+IoObject *IoObject_factorial(IoObject *self, IoObject *locals, IoMessage *m)
+{
+    // Get the number from the receiver
+    double n = IoNumber_asDouble(self);
+    
+    if (n &lt; 0) {
+        IoState_error_(IOSTATE, m, "factorial of negative number");
+        return IONIL(self);
+    }
+    
+    double result = 1;
+    for (int i = 2; i &lt;= n; i++) {
+        result *= i;
+    }
+    
+    return IoNumber_newWithDouble_(IOSTATE, result);
+}
+
+// Initialize the addon
+void IoFactorial_init(IoState *state)
+{
+    IoObject *self = IoState_lobby(state);
+    
+    // Add method to Number prototype
+    IoObject *number = IoState_protoWithName_(state, "Number");
+    IoObject_addMethod_(number, 
+        IOSYMBOL("factorial"), 
+        IoObject_factorial);
+}</code></pre><p>To compile and use:</p><pre><code># Compile as shared library
+gcc -shared -fPIC -o factorial.so factorial.c -lIo
+
+# In Io
+DynLib load("./factorial.so")
+5 factorial println  // 120</code></pre></div></div><h2 id="working-with-io-objects-in-c">Working with Io Objects in C</h2><div class="section"><div class="section-body"><pre><code>// Creating Io objects from C
+IoObject *IoAddon_createObject(IoObject *self, IoObject *locals, IoMessage *m)
+{
+    IoState *state = IOSTATE;
+    
+    // Create different types
+    IoObject *num = IoNumber_newWithDouble_(state, 42.0);
+    IoObject *str = IoSeq_newWithCString_(state, "Hello from C");
+    IoObject *list = IoList_new(state);
+    
+    // Add items to list
+    IoList_append_(list, num);
+    IoList_append_(list, str);
+    
+    // Create a new object with slots
+    IoObject *obj = IoObject_new(state);
+    IoObject_setSlot_to_(obj, IOSYMBOL("x"), num);
+    IoObject_setSlot_to_(obj, IOSYMBOL("message"), str);
+    IoObject_setSlot_to_(obj, IOSYMBOL("items"), list);
+    
+    return obj;
+}
+
+// Accessing Io objects from C
+IoObject *IoAddon_processObject(IoObject *self, IoObject *locals, IoMessage *m)
+{
+    // Get the first argument
+    IoObject *arg = IoMessage_locals_valueArgAt_(m, locals, 0);
+    
+    // Check type
+    if (ISSEQ(arg)) {
+        char *cstr = IoSeq_asCString(arg);
+        printf("String argument: %s\n", cstr);
+    }
+    else if (ISNUMBER(arg)) {
+        double num = IoNumber_asDouble(arg);
+        printf("Number argument: %f\n", num);
+    }
+    else if (ISLIST(arg)) {
+        size_t size = IoList_size(arg);
+        printf("List with %zu items\n", size);
+    }
+    
+    return self;
+}</code></pre></div></div><h2 id="creating-custom-types">Creating Custom Types</h2><div class="section"><div class="section-body"><pre><code>// customtype.c - Define a Point type
+#include "IoState.h"
+#include "IoObject.h"
+#include "IoNumber.h"
+
+// Define the type structure
+typedef struct {
+    IoObject obj;  // Must be first
+    double x;
+    double y;
+} IoPoint;
+
+// Type tag
+IoTag *IoPoint_tag(void)
+{
+    static IoTag *tag = NULL;
+    if (!tag) {
+        tag = IoTag_newWithName_("Point");
+    }
+    return tag;
+}
+
+// Constructor
+IoPoint *IoPoint_new(IoState *state, double x, double y)
+{
+    IoPoint *self = IoObject_new(state);
+    IoObject_tag_(self, IoPoint_tag());
+    
+    self-&gt;x = x;
+    self-&gt;y = y;
+    
+    return self;
+}
+
+// Methods
+IoObject *IoPoint_x(IoPoint *self, IoObject *locals, IoMessage *m)
+{
+    return IoNumber_newWithDouble_(IOSTATE, self-&gt;x);
+}
+
+IoObject *IoPoint_y(IoPoint *self, IoObject *locals, IoMessage *m)
+{
+    return IoNumber_newWithDouble_(IOSTATE, self-&gt;y);
+}
+
+IoObject *IoPoint_distance(IoPoint *self, IoObject *locals, IoMessage *m)
+{
+    IoPoint *other = IoMessage_locals_valueArgAt_(m, locals, 0);
+    
+    if (IoObject_tag(other) != IoPoint_tag()) {
+        IoState_error_(IOSTATE, m, "argument must be a Point");
+        return IONIL(self);
+    }
+    
+    double dx = self-&gt;x - other-&gt;x;
+    double dy = self-&gt;y - other-&gt;y;
+    double distance = sqrt(dx*dx + dy*dy);
+    
+    return IoNumber_newWithDouble_(IOSTATE, distance);
+}
+
+// Initialize the type
+void IoPoint_init(IoState *state)
+{
+    IoObject *self = IoState_lobby(state);
+    
+    // Create prototype
+    IoPoint *proto = IoPoint_new(state, 0, 0);
+    IoState_registerProtoWithName_(state, proto, "Point");
+    
+    // Add methods
+    IoObject_addMethod_(proto, IOSYMBOL("x"), IoPoint_x);
+    IoObject_addMethod_(proto, IOSYMBOL("y"), IoPoint_y);
+    IoObject_addMethod_(proto, IOSYMBOL("distance"), IoPoint_distance);
+}</code></pre></div></div><h2 id="calling-io-from-c">Calling Io from C</h2><div class="section"><div class="section-body"><pre><code>// Evaluate Io code from C
+IoObject *result = IoState_doString_(state, "1 + 2 * 3");
+double value = IoNumber_asDouble(result);
+printf("Result: %f\n", value);  // 7.0
+
+// Call Io methods from C
+IoObject *obj = IoState_doString_(state, "Object clone");
+IoObject *method = IoObject_getSlot_(obj, IOSYMBOL("type"));
+IoObject *result = IoObject_activate(method, obj, locals, m, NULL);
+char *type = IoSeq_asCString(result);
+printf("Type: %s\n", type);  // Object
+
+// Send messages
+IoMessage *msg = IoMessage_newWithName_(state, IOSYMBOL("println"));
+IoMessage_setCachedResult_(msg, NULL);
+IoObject *result = IoObject_perform(obj, locals, msg);</code></pre></div></div><h2 id="memory-management">Memory Management</h2><div class="section"><div class="section-body"><p>Io uses a garbage collector, but when interfacing with C, you need to be careful:</p><pre><code>// Protecting objects from GC
+IoObject *IoAddon_keepAlive(IoObject *self, IoObject *locals, IoMessage *m)
+{
+    IoState *state = IOSTATE;
+    
+    // Create object that needs to survive GC
+    IoObject *important = IoObject_new(state);
+    
+    // Add reference from a persistent object
+    IoObject_setSlot_to_(IoState_lobby(state), 
+        IOSYMBOL("_keepAlive"), important);
+    
+    // Or use IoState_retain/release
+    IoState_retain_(state, important);
+    
+    // Do work...
+    
+    // Release when done
+    IoState_release_(state, important);
+    
+    return important;
+}
+
+// Managing C memory
+typedef struct {
+    IoObject obj;
+    void *cdata;
+} IoCWrapper;
+
+void IoCWrapper_free(IoCWrapper *self)
+{
+    if (self-&gt;cdata) {
+        free(self-&gt;cdata);
+        self-&gt;cdata = NULL;
+    }
+}
+
+// Set up finalizer
+IoTag *tag = IoTag_newWithName_("CWrapper");
+IoTag_freeFunc_(tag, (IoTagFreeFunc *)IoCWrapper_free);</code></pre></div></div><h2 id="wrapping-c-libraries">Wrapping C Libraries</h2><div class="section"><div class="section-body"><p>Example: Wrapping a simple math library:</p><pre><code>// mathlib_wrapper.c
+#include &lt;math.h&gt;
+#include "IoState.h"
+#include "IoObject.h"
+#include "IoNumber.h"
+#include "IoList.h"
+
+// Wrap sin function
+IoObject *IoMath_sin(IoObject *self, IoObject *locals, IoMessage *m)
+{
+    double x = IoMessage_locals_doubleArgAt_(m, locals, 0);
+    return IoNumber_newWithDouble_(IOSTATE, sin(x));
+}
+
+// Wrap complex function
+IoObject *IoMath_stats(IoObject *self, IoObject *locals, IoMessage *m)
+{
+    IoList *list = IoMessage_locals_listArgAt_(m, locals, 0);
+    size_t count = IoList_size(list);
+    
+    if (count == 0) {
+        return IoList_new(IOSTATE);
+    }
+    
+    double sum = 0, min = INFINITY, max = -INFINITY;
+    
+    for (size_t i = 0; i &lt; count; i++) {
+        IoObject *item = IoList_at_(list, i);
+        double value = IoNumber_asDouble(item);
+        
+        sum += value;
+        if (value &lt; min) min = value;
+        if (value &gt; max) max = value;
+    }
+    
+    double mean = sum / count;
+    
+    // Return statistics as list
+    IoList *result = IoList_new(IOSTATE);
+    IoList_append_(result, IoNumber_newWithDouble_(IOSTATE, mean));
+    IoList_append_(result, IoNumber_newWithDouble_(IOSTATE, min));
+    IoList_append_(result, IoNumber_newWithDouble_(IOSTATE, max));
+    
+    return result;
+}
+
+void IoMathLib_init(IoState *state)
+{
+    IoObject *math = IoObject_new(state);
+    IoState_registerProtoWithName_(state, math, "Math");
+    
+    IoObject_addMethod_(math, IOSYMBOL("sin"), IoMath_sin);
+    IoObject_addMethod_(math, IOSYMBOL("stats"), IoMath_stats);
+}</code></pre><p>Usage in Io:</p><pre><code>DynLib load("./mathlib.so")
+
+Math sin(3.14159 / 2) println  // 1.0
+
+stats := Math stats(list(1, 2, 3, 4, 5))
+"Mean: " .. stats at(0) println  // Mean: 3
+"Min: " .. stats at(1) println   // Min: 1
+"Max: " .. stats at(2) println   // Max: 5</code></pre></div></div><h2 id="embedding-io-in-c-applications">Embedding Io in C Applications</h2><div class="section"><div class="section-body"><pre><code>// embed_io.c - Embedding Io in a C application
+#include &lt;stdio.h&gt;
+#include "IoState.h"
+#include "IoObject.h"
+#include "IoSeq.h"
+
+// Custom function exposed to Io
+IoObject *App_log(IoObject *self, IoObject *locals, IoMessage *m)
+{
+    char *msg = IoMessage_locals_cStringArgAt_(m, locals, 0);
+    printf("[APP LOG] %s\n", msg);
+    return self;
+}
+
+int main(int argc, char *argv[])
+{
+    // Initialize Io
+    IoState *state = IoState_new();
+    IoState_init(state);
+    
+    // Add custom functions
+    IoObject *lobby = IoState_lobby(state);
+    IoObject *app = IoObject_new(state);
+    IoState_registerProtoWithName_(state, app, "App");
+    IoObject_addMethod_(app, IOSYMBOL("log"), App_log);
+    
+    // Load and run Io script
+    IoState_doFile_(state, "script.io");
+    
+    // Interact with Io objects
+    IoObject *result = IoState_doString_(state, 
+        "x := 10; y := 20; x + y");
+    printf("Result from Io: %f\n", IoNumber_asDouble(result));
+    
+    // Clean up
+    IoState_free(state);
+    
+    return 0;
+}</code></pre><p>The Io script (script.io):</p><pre><code>App log("Hello from Io!")
+
+// Define functions for C to call
+calculate := method(a, b,
+    App log("Calculating in Io")
+    a * b + 100
+)</code></pre></div></div><h2 id="performance-optimization">Performance Optimization</h2><div class="section"><div class="section-body"><pre><code>// Optimized array operations
+IoObject *IoArray_sum(IoObject *self, IoObject *locals, IoMessage *m)
+{
+    // Get underlying C array for performance
+    UArray *array = IoSeq_rawUArray(self);
+    size_t size = UArray_size(array);
+    uint8_t *data = UArray_bytes(array);
+    int itemSize = UArray_itemSize(array);
+    
+    double sum = 0;
+    
+    // Fast path for different types
+    if (itemSize == sizeof(double)) {
+        double *doubles = (double *)data;
+        for (size_t i = 0; i &lt; size; i++) {
+            sum += doubles[i];
+        }
+    }
+    else if (itemSize == sizeof(float)) {
+        float *floats = (float *)data;
+        for (size_t i = 0; i &lt; size; i++) {
+            sum += floats[i];
+        }
+    }
+    
+    return IoNumber_newWithDouble_(IOSTATE, sum);
+}
+
+// Batch operations
+IoObject *IoMatrix_multiply(IoObject *self, IoObject *locals, IoMessage *m)
+{
+    IoObject *other = IoMessage_locals_valueArgAt_(m, locals, 0);
+    
+    // Get dimensions
+    int rows1 = IoMessage_locals_intArgAt_(m, locals, 1);
+    int cols1 = IoMessage_locals_intArgAt_(m, locals, 2);
+    int cols2 = IoMessage_locals_intArgAt_(m, locals, 3);
+    
+    // Get raw data pointers
+    double *data1 = (double *)IoSeq_rawBytes(self);
+    double *data2 = (double *)IoSeq_rawBytes(other);
+    
+    // Allocate result
+    IoSeq *result = IoSeq_newWithData_length_(IOSTATE, 
+        NULL, rows1 * cols2 * sizeof(double));
+    double *resultData = (double *)IoSeq_rawBytes(result);
+    
+    // Optimized matrix multiplication
+    for (int i = 0; i &lt; rows1; i++) {
+        for (int j = 0; j &lt; cols2; j++) {
+            double sum = 0;
+            for (int k = 0; k &lt; cols1; k++) {
+                sum += data1[i * cols1 + k] * data2[k * cols2 + j];
+            }
+            resultData[i * cols2 + j] = sum;
+        }
+    }
+    
+    return result;
+}</code></pre></div></div><h2 id="debugging-c-addons">Debugging C Addons</h2><div class="section"><div class="section-body"><pre><code>// Debug helpers
+#define IO_DEBUG 1
+
+#ifdef IO_DEBUG
+    #define DEBUG_PRINT(fmt, ...) \
+        fprintf(stderr, "DEBUG: " fmt "\n", ##__VA_ARGS__)
+#else
+    #define DEBUG_PRINT(fmt, ...)
+#endif
+
+IoObject *IoDebug_function(IoObject *self, IoObject *locals, IoMessage *m)
+{
+    DEBUG_PRINT("Function called with %d arguments", 
+        IoMessage_argCount(m));
+    
+    // Print argument types
+    for (int i = 0; i &lt; IoMessage_argCount(m); i++) {
+        IoObject *arg = IoMessage_locals_valueArgAt_(m, locals, i);
+        DEBUG_PRINT("  Arg %d: %s", i, IoObject_name(arg));
+    }
+    
+    // Check for memory issues
+    IoState *state = IOSTATE;
+    IoState_check(state);
+    
+    return self;
+}</code></pre></div></div><h2 id="common-integration-patterns">Common Integration Patterns</h2><div class="section"><div class="section-body"><h3 id="callback-pattern">Callback Pattern</h3><pre><code>// Store Io blocks as callbacks
+typedef struct {
+    IoObject obj;
+    IoObject *callback;
+} IoCallbackWrapper;
+
+IoObject *IoWrapper_setCallback(IoCallbackWrapper *self, 
+    IoObject *locals, IoMessage *m)
+{
+    IoObject *block = IoMessage_locals_valueArgAt_(m, locals, 0);
+    
+    // Retain the block
+    IoState_retain_(IOSTATE, block);
+    if (self-&gt;callback) {
+        IoState_release_(IOSTATE, self-&gt;callback);
+    }
+    self-&gt;callback = block;
+    
+    return self;
+}
+
+// Call the Io callback from C
+void triggerCallback(IoCallbackWrapper *wrapper, double value)
+{
+    if (wrapper-&gt;callback) {
+        IoObject *arg = IoNumber_newWithDouble_(IOSTATE, value);
+        IoObject_perform(wrapper-&gt;callback, wrapper, 
+            IoMessage_newWithName_label_(IOSTATE, 
+                IOSYMBOL("call"), arg));
+    }
+}</code></pre><h3 id="event-system">Event System</h3><pre><code>// Event emitter in C
+typedef struct {
+    IoObject obj;
+    IoMap *handlers;  // Event name -&gt; List of handlers
+} IoEventEmitter;
+
+IoObject *IoEventEmitter_on(IoEventEmitter *self, 
+    IoObject *locals, IoMessage *m)
+{
+    IoSeq *event = IoMessage_locals_seqArgAt_(m, locals, 0);
+    IoObject *handler = IoMessage_locals_valueArgAt_(m, locals, 1);
+    
+    IoList *handlers = IoMap_at_(self-&gt;handlers, event);
+    if (!handlers) {
+        handlers = IoList_new(IOSTATE);
+        IoMap_atPut_(self-&gt;handlers, event, handlers);
+    }
+    
+    IoList_append_(handlers, handler);
+    return self;
+}
+
+IoObject *IoEventEmitter_emit(IoEventEmitter *self, 
+    IoObject *locals, IoMessage *m)
+{
+    IoSeq *event = IoMessage_locals_seqArgAt_(m, locals, 0);
+    IoList *handlers = IoMap_at_(self-&gt;handlers, event);
+    
+    if (handlers) {
+        size_t count = IoList_size(handlers);
+        for (size_t i = 0; i &lt; count; i++) {
+            IoObject *handler = IoList_at_(handlers, i);
+            
+            // Pass remaining arguments to handler
+            IoMessage *msg = IoMessage_newWithName_(IOSTATE, 
+                IOSYMBOL("call"));
+            for (int j = 1; j &lt; IoMessage_argCount(m); j++) {
+                IoMessage_addArg_(msg, IoMessage_argAt_(m, j));
+            }
+            
+            IoObject_perform(handler, locals, msg);
+        }
+    }
+    
+    return self;
+}</code></pre></div></div><h2 id="build-system-integration">Build System Integration</h2><div class="section"><div class="section-body"><p>Makefile for Io addon:</p><pre><code># Makefile for Io addon
+CC = gcc
+CFLAGS = -shared -fPIC -Wall -O2
+INCLUDES = -I$(IO_HOME)/include
+LIBS = -L$(IO_HOME)/lib -lIo
+
+ADDON = myaddon.so
+SOURCES = myaddon.c utils.c
+OBJECTS = $(SOURCES:.c=.o)
+
+all: $(ADDON)
+
+$(ADDON): $(OBJECTS)
+    $(CC) $(CFLAGS) -o $@ $^ $(LIBS)
+
+%.o: %.c
+    $(CC) $(CFLAGS) $(INCLUDES) -c $&lt; -o $@
+
+clean:
+    rm -f $(OBJECTS) $(ADDON)
+
+install: $(ADDON)
+    cp $(ADDON) $(IO_HOME)/addons/
+
+test: $(ADDON)
+    io test_addon.io</code></pre></div></div><h2 id="exercises">Exercises</h2><div class="section"><div class="section-body"><ol><li><strong>SQLite Wrapper</strong>: Create a complete SQLite wrapper for Io.</li><li><strong>Graphics Library</strong>: Wrap SDL or Cairo for graphics programming.</li><li><strong>Network Addon</strong>: Implement high-performance networking primitives.</li><li><strong>Crypto Library</strong>: Wrap OpenSSL for cryptographic operations.</li><li><strong>Scientific Computing</strong>: Create bindings for BLAS/LAPACK.</li></ol></div></div><h2 id="conclusion">Conclusion</h2><div class="section"><div class="section-body"><p>C integration is one of Io's strongest features. The ability to seamlessly extend Io with C libraries, create high-performance addons, and embed Io in C applications makes it practical for real-world applications. The clean C API and simple object model make integration straightforward, while the garbage collector handles most memory management concerns.</p><p>Whether you're optimizing hot paths, wrapping existing libraries, or embedding a scripting language in your application, Io's C integration provides the tools you need while maintaining the simplicity and elegance of the language.</p></div></div><div class="page-footer"><a class="next-link" href="../Real-World-Patterns/index.html">Real-World Patterns &rarr;</a></div></div>
+<script src="../colvmn/layout/bundle.js" defer></script>
+  <script type="application/json" id="colvmn-prefetch">{"./_index.json":{"ok":false,"status":404},"./_index.md":{"ok":true,"status":200,"content":"---\ntitle: C Integration\ntopTitle: Io\nsubtitle: \"Embedding Io in C and extending Io with high-performance C addons.\"\nnextSectionLink: true\n---\n\nIo is implemented in C and provides excellent C integration capabilities. You can extend Io with C libraries, create high-performance addons, and embed Io in C applications. This chapter explores the bidirectional relationship between Io and C.\n\n## Understanding Io's C Architecture\n\nIo's core is a small C library (around 10,000 lines) that implements:\n\n- The object model (IoObject)\n- The message passing system\n- Basic types (Number, String, List, etc.)\n- The VM and garbage collector\n\nEverything else is built on top of this foundation, either in C addons or pure Io.\n\n## Creating a Simple C Addon\n\nLet's create a basic C addon that adds a method to calculate factorials:\n\n```c\n// factorial.c\n#include \"IoState.h\"\n#include \"IoObject.h\"\n#include \"IoNumber.h\"\n\nIoObject *IoObject_factorial(IoObject *self, IoObject *locals, IoMessage *m)\n{\n    // Get the number from the receiver\n    double n = IoNumber_asDouble(self);\n    \n    if (n \u003c 0) {\n        IoState_error_(IOSTATE, m, \"factorial of negative number\");\n        return IONIL(self);\n    }\n    \n    double result = 1;\n    for (int i = 2; i \u003c= n; i++) {\n        result *= i;\n    }\n    \n    return IoNumber_newWithDouble_(IOSTATE, result);\n}\n\n// Initialize the addon\nvoid IoFactorial_init(IoState *state)\n{\n    IoObject *self = IoState_lobby(state);\n    \n    // Add method to Number prototype\n    IoObject *number = IoState_protoWithName_(state, \"Number\");\n    IoObject_addMethod_(number, \n        IOSYMBOL(\"factorial\"), \n        IoObject_factorial);\n}\n```\n\nTo compile and use:\n\n```bash\n# Compile as shared library\ngcc -shared -fPIC -o factorial.so factorial.c -lIo\n\n# In Io\nDynLib load(\"./factorial.so\")\n5 factorial println  // 120\n```\n\n## Working with Io Objects in C\n\n```c\n// Creating Io objects from C\nIoObject *IoAddon_createObject(IoObject *self, IoObject *locals, IoMessage *m)\n{\n    IoState *state = IOSTATE;\n    \n    // Create different types\n    IoObject *num = IoNumber_newWithDouble_(state, 42.0);\n    IoObject *str = IoSeq_newWithCString_(state, \"Hello from C\");\n    IoObject *list = IoList_new(state);\n    \n    // Add items to list\n    IoList_append_(list, num);\n    IoList_append_(list, str);\n    \n    // Create a new object with slots\n    IoObject *obj = IoObject_new(state);\n    IoObject_setSlot_to_(obj, IOSYMBOL(\"x\"), num);\n    IoObject_setSlot_to_(obj, IOSYMBOL(\"message\"), str);\n    IoObject_setSlot_to_(obj, IOSYMBOL(\"items\"), list);\n    \n    return obj;\n}\n\n// Accessing Io objects from C\nIoObject *IoAddon_processObject(IoObject *self, IoObject *locals, IoMessage *m)\n{\n    // Get the first argument\n    IoObject *arg = IoMessage_locals_valueArgAt_(m, locals, 0);\n    \n    // Check type\n    if (ISSEQ(arg)) {\n        char *cstr = IoSeq_asCString(arg);\n        printf(\"String argument: %s\\n\", cstr);\n    }\n    else if (ISNUMBER(arg)) {\n        double num = IoNumber_asDouble(arg);\n        printf(\"Number argument: %f\\n\", num);\n    }\n    else if (ISLIST(arg)) {\n        size_t size = IoList_size(arg);\n        printf(\"List with %zu items\\n\", size);\n    }\n    \n    return self;\n}\n```\n\n## Creating Custom Types\n\n```c\n// customtype.c - Define a Point type\n#include \"IoState.h\"\n#include \"IoObject.h\"\n#include \"IoNumber.h\"\n\n// Define the type structure\ntypedef struct {\n    IoObject obj;  // Must be first\n    double x;\n    double y;\n} IoPoint;\n\n// Type tag\nIoTag *IoPoint_tag(void)\n{\n    static IoTag *tag = NULL;\n    if (!tag) {\n        tag = IoTag_newWithName_(\"Point\");\n    }\n    return tag;\n}\n\n// Constructor\nIoPoint *IoPoint_new(IoState *state, double x, double y)\n{\n    IoPoint *self = IoObject_new(state);\n    IoObject_tag_(self, IoPoint_tag());\n    \n    self->x = x;\n    self->y = y;\n    \n    return self;\n}\n\n// Methods\nIoObject *IoPoint_x(IoPoint *self, IoObject *locals, IoMessage *m)\n{\n    return IoNumber_newWithDouble_(IOSTATE, self->x);\n}\n\nIoObject *IoPoint_y(IoPoint *self, IoObject *locals, IoMessage *m)\n{\n    return IoNumber_newWithDouble_(IOSTATE, self->y);\n}\n\nIoObject *IoPoint_distance(IoPoint *self, IoObject *locals, IoMessage *m)\n{\n    IoPoint *other = IoMessage_locals_valueArgAt_(m, locals, 0);\n    \n    if (IoObject_tag(other) != IoPoint_tag()) {\n        IoState_error_(IOSTATE, m, \"argument must be a Point\");\n        return IONIL(self);\n    }\n    \n    double dx = self->x - other->x;\n    double dy = self->y - other->y;\n    double distance = sqrt(dx*dx + dy*dy);\n    \n    return IoNumber_newWithDouble_(IOSTATE, distance);\n}\n\n// Initialize the type\nvoid IoPoint_init(IoState *state)\n{\n    IoObject *self = IoState_lobby(state);\n    \n    // Create prototype\n    IoPoint *proto = IoPoint_new(state, 0, 0);\n    IoState_registerProtoWithName_(state, proto, \"Point\");\n    \n    // Add methods\n    IoObject_addMethod_(proto, IOSYMBOL(\"x\"), IoPoint_x);\n    IoObject_addMethod_(proto, IOSYMBOL(\"y\"), IoPoint_y);\n    IoObject_addMethod_(proto, IOSYMBOL(\"distance\"), IoPoint_distance);\n}\n```\n\n## Calling Io from C\n\n```c\n// Evaluate Io code from C\nIoObject *result = IoState_doString_(state, \"1 + 2 * 3\");\ndouble value = IoNumber_asDouble(result);\nprintf(\"Result: %f\\n\", value);  // 7.0\n\n// Call Io methods from C\nIoObject *obj = IoState_doString_(state, \"Object clone\");\nIoObject *method = IoObject_getSlot_(obj, IOSYMBOL(\"type\"));\nIoObject *result = IoObject_activate(method, obj, locals, m, NULL);\nchar *type = IoSeq_asCString(result);\nprintf(\"Type: %s\\n\", type);  // Object\n\n// Send messages\nIoMessage *msg = IoMessage_newWithName_(state, IOSYMBOL(\"println\"));\nIoMessage_setCachedResult_(msg, NULL);\nIoObject *result = IoObject_perform(obj, locals, msg);\n```\n\n## Memory Management\n\nIo uses a garbage collector, but when interfacing with C, you need to be careful:\n\n```c\n// Protecting objects from GC\nIoObject *IoAddon_keepAlive(IoObject *self, IoObject *locals, IoMessage *m)\n{\n    IoState *state = IOSTATE;\n    \n    // Create object that needs to survive GC\n    IoObject *important = IoObject_new(state);\n    \n    // Add reference from a persistent object\n    IoObject_setSlot_to_(IoState_lobby(state), \n        IOSYMBOL(\"_keepAlive\"), important);\n    \n    // Or use IoState_retain/release\n    IoState_retain_(state, important);\n    \n    // Do work...\n    \n    // Release when done\n    IoState_release_(state, important);\n    \n    return important;\n}\n\n// Managing C memory\ntypedef struct {\n    IoObject obj;\n    void *cdata;\n} IoCWrapper;\n\nvoid IoCWrapper_free(IoCWrapper *self)\n{\n    if (self->cdata) {\n        free(self->cdata);\n        self->cdata = NULL;\n    }\n}\n\n// Set up finalizer\nIoTag *tag = IoTag_newWithName_(\"CWrapper\");\nIoTag_freeFunc_(tag, (IoTagFreeFunc *)IoCWrapper_free);\n```\n\n## Wrapping C Libraries\n\nExample: Wrapping a simple math library:\n\n```c\n// mathlib_wrapper.c\n#include \u003cmath.h>\n#include \"IoState.h\"\n#include \"IoObject.h\"\n#include \"IoNumber.h\"\n#include \"IoList.h\"\n\n// Wrap sin function\nIoObject *IoMath_sin(IoObject *self, IoObject *locals, IoMessage *m)\n{\n    double x = IoMessage_locals_doubleArgAt_(m, locals, 0);\n    return IoNumber_newWithDouble_(IOSTATE, sin(x));\n}\n\n// Wrap complex function\nIoObject *IoMath_stats(IoObject *self, IoObject *locals, IoMessage *m)\n{\n    IoList *list = IoMessage_locals_listArgAt_(m, locals, 0);\n    size_t count = IoList_size(list);\n    \n    if (count == 0) {\n        return IoList_new(IOSTATE);\n    }\n    \n    double sum = 0, min = INFINITY, max = -INFINITY;\n    \n    for (size_t i = 0; i \u003c count; i++) {\n        IoObject *item = IoList_at_(list, i);\n        double value = IoNumber_asDouble(item);\n        \n        sum += value;\n        if (value \u003c min) min = value;\n        if (value > max) max = value;\n    }\n    \n    double mean = sum / count;\n    \n    // Return statistics as list\n    IoList *result = IoList_new(IOSTATE);\n    IoList_append_(result, IoNumber_newWithDouble_(IOSTATE, mean));\n    IoList_append_(result, IoNumber_newWithDouble_(IOSTATE, min));\n    IoList_append_(result, IoNumber_newWithDouble_(IOSTATE, max));\n    \n    return result;\n}\n\nvoid IoMathLib_init(IoState *state)\n{\n    IoObject *math = IoObject_new(state);\n    IoState_registerProtoWithName_(state, math, \"Math\");\n    \n    IoObject_addMethod_(math, IOSYMBOL(\"sin\"), IoMath_sin);\n    IoObject_addMethod_(math, IOSYMBOL(\"stats\"), IoMath_stats);\n}\n```\n\nUsage in Io:\n\n```io\nDynLib load(\"./mathlib.so\")\n\nMath sin(3.14159 / 2) println  // 1.0\n\nstats := Math stats(list(1, 2, 3, 4, 5))\n\"Mean: \" .. stats at(0) println  // Mean: 3\n\"Min: \" .. stats at(1) println   // Min: 1\n\"Max: \" .. stats at(2) println   // Max: 5\n```\n\n## Embedding Io in C Applications\n\n```c\n// embed_io.c - Embedding Io in a C application\n#include \u003cstdio.h>\n#include \"IoState.h\"\n#include \"IoObject.h\"\n#include \"IoSeq.h\"\n\n// Custom function exposed to Io\nIoObject *App_log(IoObject *self, IoObject *locals, IoMessage *m)\n{\n    char *msg = IoMessage_locals_cStringArgAt_(m, locals, 0);\n    printf(\"[APP LOG] %s\\n\", msg);\n    return self;\n}\n\nint main(int argc, char *argv[])\n{\n    // Initialize Io\n    IoState *state = IoState_new();\n    IoState_init(state);\n    \n    // Add custom functions\n    IoObject *lobby = IoState_lobby(state);\n    IoObject *app = IoObject_new(state);\n    IoState_registerProtoWithName_(state, app, \"App\");\n    IoObject_addMethod_(app, IOSYMBOL(\"log\"), App_log);\n    \n    // Load and run Io script\n    IoState_doFile_(state, \"script.io\");\n    \n    // Interact with Io objects\n    IoObject *result = IoState_doString_(state, \n        \"x := 10; y := 20; x + y\");\n    printf(\"Result from Io: %f\\n\", IoNumber_asDouble(result));\n    \n    // Clean up\n    IoState_free(state);\n    \n    return 0;\n}\n```\n\nThe Io script (script.io):\n\n```io\nApp log(\"Hello from Io!\")\n\n// Define functions for C to call\ncalculate := method(a, b,\n    App log(\"Calculating in Io\")\n    a * b + 100\n)\n```\n\n## Performance Optimization\n\n```c\n// Optimized array operations\nIoObject *IoArray_sum(IoObject *self, IoObject *locals, IoMessage *m)\n{\n    // Get underlying C array for performance\n    UArray *array = IoSeq_rawUArray(self);\n    size_t size = UArray_size(array);\n    uint8_t *data = UArray_bytes(array);\n    int itemSize = UArray_itemSize(array);\n    \n    double sum = 0;\n    \n    // Fast path for different types\n    if (itemSize == sizeof(double)) {\n        double *doubles = (double *)data;\n        for (size_t i = 0; i \u003c size; i++) {\n            sum += doubles[i];\n        }\n    }\n    else if (itemSize == sizeof(float)) {\n        float *floats = (float *)data;\n        for (size_t i = 0; i \u003c size; i++) {\n            sum += floats[i];\n        }\n    }\n    \n    return IoNumber_newWithDouble_(IOSTATE, sum);\n}\n\n// Batch operations\nIoObject *IoMatrix_multiply(IoObject *self, IoObject *locals, IoMessage *m)\n{\n    IoObject *other = IoMessage_locals_valueArgAt_(m, locals, 0);\n    \n    // Get dimensions\n    int rows1 = IoMessage_locals_intArgAt_(m, locals, 1);\n    int cols1 = IoMessage_locals_intArgAt_(m, locals, 2);\n    int cols2 = IoMessage_locals_intArgAt_(m, locals, 3);\n    \n    // Get raw data pointers\n    double *data1 = (double *)IoSeq_rawBytes(self);\n    double *data2 = (double *)IoSeq_rawBytes(other);\n    \n    // Allocate result\n    IoSeq *result = IoSeq_newWithData_length_(IOSTATE, \n        NULL, rows1 * cols2 * sizeof(double));\n    double *resultData = (double *)IoSeq_rawBytes(result);\n    \n    // Optimized matrix multiplication\n    for (int i = 0; i \u003c rows1; i++) {\n        for (int j = 0; j \u003c cols2; j++) {\n            double sum = 0;\n            for (int k = 0; k \u003c cols1; k++) {\n                sum += data1[i * cols1 + k] * data2[k * cols2 + j];\n            }\n            resultData[i * cols2 + j] = sum;\n        }\n    }\n    \n    return result;\n}\n```\n\n## Debugging C Addons\n\n```c\n// Debug helpers\n#define IO_DEBUG 1\n\n#ifdef IO_DEBUG\n    #define DEBUG_PRINT(fmt, ...) \\\n        fprintf(stderr, \"DEBUG: \" fmt \"\\n\", ##__VA_ARGS__)\n#else\n    #define DEBUG_PRINT(fmt, ...)\n#endif\n\nIoObject *IoDebug_function(IoObject *self, IoObject *locals, IoMessage *m)\n{\n    DEBUG_PRINT(\"Function called with %d arguments\", \n        IoMessage_argCount(m));\n    \n    // Print argument types\n    for (int i = 0; i \u003c IoMessage_argCount(m); i++) {\n        IoObject *arg = IoMessage_locals_valueArgAt_(m, locals, i);\n        DEBUG_PRINT(\"  Arg %d: %s\", i, IoObject_name(arg));\n    }\n    \n    // Check for memory issues\n    IoState *state = IOSTATE;\n    IoState_check(state);\n    \n    return self;\n}\n```\n\n## Common Integration Patterns\n\n### Callback Pattern\n\n```c\n// Store Io blocks as callbacks\ntypedef struct {\n    IoObject obj;\n    IoObject *callback;\n} IoCallbackWrapper;\n\nIoObject *IoWrapper_setCallback(IoCallbackWrapper *self, \n    IoObject *locals, IoMessage *m)\n{\n    IoObject *block = IoMessage_locals_valueArgAt_(m, locals, 0);\n    \n    // Retain the block\n    IoState_retain_(IOSTATE, block);\n    if (self->callback) {\n        IoState_release_(IOSTATE, self->callback);\n    }\n    self->callback = block;\n    \n    return self;\n}\n\n// Call the Io callback from C\nvoid triggerCallback(IoCallbackWrapper *wrapper, double value)\n{\n    if (wrapper->callback) {\n        IoObject *arg = IoNumber_newWithDouble_(IOSTATE, value);\n        IoObject_perform(wrapper->callback, wrapper, \n            IoMessage_newWithName_label_(IOSTATE, \n                IOSYMBOL(\"call\"), arg));\n    }\n}\n```\n\n### Event System\n\n```c\n// Event emitter in C\ntypedef struct {\n    IoObject obj;\n    IoMap *handlers;  // Event name -> List of handlers\n} IoEventEmitter;\n\nIoObject *IoEventEmitter_on(IoEventEmitter *self, \n    IoObject *locals, IoMessage *m)\n{\n    IoSeq *event = IoMessage_locals_seqArgAt_(m, locals, 0);\n    IoObject *handler = IoMessage_locals_valueArgAt_(m, locals, 1);\n    \n    IoList *handlers = IoMap_at_(self->handlers, event);\n    if (!handlers) {\n        handlers = IoList_new(IOSTATE);\n        IoMap_atPut_(self->handlers, event, handlers);\n    }\n    \n    IoList_append_(handlers, handler);\n    return self;\n}\n\nIoObject *IoEventEmitter_emit(IoEventEmitter *self, \n    IoObject *locals, IoMessage *m)\n{\n    IoSeq *event = IoMessage_locals_seqArgAt_(m, locals, 0);\n    IoList *handlers = IoMap_at_(self->handlers, event);\n    \n    if (handlers) {\n        size_t count = IoList_size(handlers);\n        for (size_t i = 0; i \u003c count; i++) {\n            IoObject *handler = IoList_at_(handlers, i);\n            \n            // Pass remaining arguments to handler\n            IoMessage *msg = IoMessage_newWithName_(IOSTATE, \n                IOSYMBOL(\"call\"));\n            for (int j = 1; j \u003c IoMessage_argCount(m); j++) {\n                IoMessage_addArg_(msg, IoMessage_argAt_(m, j));\n            }\n            \n            IoObject_perform(handler, locals, msg);\n        }\n    }\n    \n    return self;\n}\n```\n\n## Build System Integration\n\nMakefile for Io addon:\n\n```makefile\n# Makefile for Io addon\nCC = gcc\nCFLAGS = -shared -fPIC -Wall -O2\nINCLUDES = -I$(IO_HOME)/include\nLIBS = -L$(IO_HOME)/lib -lIo\n\nADDON = myaddon.so\nSOURCES = myaddon.c utils.c\nOBJECTS = $(SOURCES:.c=.o)\n\nall: $(ADDON)\n\n$(ADDON): $(OBJECTS)\n    $(CC) $(CFLAGS) -o $@ $^ $(LIBS)\n\n%.o: %.c\n    $(CC) $(CFLAGS) $(INCLUDES) -c $\u003c -o $@\n\nclean:\n    rm -f $(OBJECTS) $(ADDON)\n\ninstall: $(ADDON)\n    cp $(ADDON) $(IO_HOME)/addons/\n\ntest: $(ADDON)\n    io test_addon.io\n```\n\n## Exercises\n\n1. **SQLite Wrapper**: Create a complete SQLite wrapper for Io.\n\n2. **Graphics Library**: Wrap SDL or Cairo for graphics programming.\n\n3. **Network Addon**: Implement high-performance networking primitives.\n\n4. **Crypto Library**: Wrap OpenSSL for cryptographic operations.\n\n5. **Scientific Computing**: Create bindings for BLAS/LAPACK.\n\n## Conclusion\n\nC integration is one of Io's strongest features. The ability to seamlessly extend Io with C libraries, create high-performance addons, and embed Io in C applications makes it practical for real-world applications. The clean C API and simple object model make integration straightforward, while the garbage collector handles most memory management concerns.\n\nWhether you're optimizing hot paths, wrapping existing libraries, or embedding a scripting language in your application, Io's C integration provides the tools you need while maintaining the simplicity and elegance of the language.\n"},"../_index.json":{"ok":true,"status":200,"content":"{\n  \"title\": \"The Io Programming Language\",\n  \"topTitle\": \"Io\",\n  \"subtitle\": \"A comprehensive guide to prototype-based programming with Io.\",\n  \"content\": [\n    {\n      \"type\": \"ContentText\",\n      \"content\": \"This book provides an in-depth exploration of the Io programming language, designed for experienced programmers who want to understand prototype-based object-oriented programming. Through detailed comparisons with mainstream languages like JavaScript, Python, Ruby, and Java, readers will gain practical insights into Io's unique paradigm.\"\n    },\n    {\n      \"type\": \"ContentCards\",\n      \"title\": \"Chapters\",\n      \"columns\": 2,\n      \"items\": [\n        \"Preface\",\n        \"Introduction\",\n        \"Getting-Started\",\n        \"Everything-is-an-Object\",\n        \"Prototypes-Not-Classes\",\n        \"Messages-and-Slots\",\n        \"Cloning-and-Inheritance\",\n        \"Control-Flow\",\n        \"Collections\",\n        \"Blocks-and-Closures\",\n        \"Exceptions\",\n        \"Metaprogramming\",\n        \"Concurrency\",\n        \"Domain-Specific-Languages\",\n        \"C-Integration\",\n        \"Real-World-Patterns\",\n        \"Case-Studies\",\n        \"Ecosystem-and-Libraries\",\n        \"Conclusion\"\n      ]\n    }\n  ]\n}\n"},"../Real-World-Patterns/_index.json":{"ok":false,"status":404},"../Real-World-Patterns/_index.md":{"ok":true,"status":200,"content":"---\ntitle: Real-World Patterns\ntopTitle: Io\nsubtitle: \"Architectures and patterns for building substantial applications in Io.\"\nnextSectionLink: true\n---\n\nAfter exploring Io's features in isolation, this chapter brings everything together by examining patterns and architectures for building real applications. We'll see how Io's unique features enable elegant solutions to common programming challenges.\n\n## Model-View-Controller (MVC)\n\nImplementing MVC in Io leverages prototypes and message passing:\n\n```io\n// Model\nModel := Object clone\nModel init := method(\n    self observers := list()\n    self data := Map clone\n    self\n)\n\nModel set := method(key, value,\n    oldValue := data at(key)\n    if(oldValue != value,\n        data atPut(key, value)\n        notifyObservers(key, oldValue, value)\n    )\n    self\n)\n\nModel get := method(key,\n    data at(key)\n)\n\nModel observe := method(observer,\n    observers append(observer)\n    self\n)\n\nModel notifyObservers := method(key, oldValue, newValue,\n    observers foreach(observer,\n        if(observer hasSlot(\"modelChanged\"),\n            observer modelChanged(self, key, oldValue, newValue)\n        )\n    )\n)\n\n// View\nView := Object clone\nView init := method(model,\n    self model := model\n    model observe(self)\n    self elements := Map clone\n    self\n)\n\nView modelChanged := method(model, key, oldValue, newValue,\n    render\n)\n\nView render := method(\n    // Override in subclasses\n)\n\n// Controller\nController := Object clone\nController init := method(model, view,\n    self model := model\n    self view := view\n    self\n)\n\nController handleInput := method(input,\n    // Process input and update model\n)\n\n// Example: Todo MVC\nTodoModel := Model clone\nTodoModel init := method(\n    resend\n    self set(\"todos\", list())\n    self\n)\n\nTodoModel addTodo := method(text,\n    todos := get(\"todos\") copy\n    todos append(Map with(\"text\", text, \"done\", false))\n    set(\"todos\", todos)\n)\n\nTodoModel toggleTodo := method(index,\n    todos := get(\"todos\") copy\n    todo := todos at(index)\n    todo atPut(\"done\", todo at(\"done\") not)\n    set(\"todos\", todos)\n)\n\nTodoView := View clone\nTodoView render := method(\n    \"=== Todo List ===\" println\n    model get(\"todos\") foreach(i, todo,\n        status := if(todo at(\"done\"), \"[✓]\", \"[ ]\")\n        (i .. \". \" .. status .. \" \" .. todo at(\"text\")) println\n    )\n    \"================\" println\n)\n\nTodoController := Controller clone\nTodoController processCommand := method(cmd,\n    parts := cmd split(\" \")\n    action := parts at(0)\n    \n    if(action == \"add\",\n        text := parts slice(1) join(\" \")\n        model addTodo(text)\n    )\n    \n    if(action == \"toggle\",\n        index := parts at(1) asNumber\n        model toggleTodo(index)\n    )\n    \n    if(action == \"quit\",\n        System exit\n    )\n)\n\n// Usage\napp := Object clone\napp model := TodoModel clone init\napp view := TodoView clone init(app model)\napp controller := TodoController clone init(app model, app view)\n\napp view render\n// Simulate commands\napp controller processCommand(\"add Buy groceries\")\napp controller processCommand(\"add Write documentation\")\napp controller processCommand(\"toggle 0\")\n```\n\n## Repository Pattern\n\nAbstracting data access:\n\n```io\n// Base Repository\nRepository := Object clone\nRepository init := method(\n    self storage := list()\n    self nextId := 1\n    self\n)\n\nRepository save := method(entity,\n    if(entity hasSlot(\"id\") not or entity id isNil,\n        entity id := nextId\n        nextId = nextId + 1\n        storage append(entity)\n    ,\n        // Update existing\n        index := storage detectIndex(e, e id == entity id)\n        if(index, storage atPut(index, entity))\n    )\n    entity\n)\n\nRepository findById := method(id,\n    storage detect(e, e id == id)\n)\n\nRepository findAll := method(\n    storage copy\n)\n\nRepository delete := method(entity,\n    storage remove(entity)\n)\n\nRepository where := method(predicate,\n    storage select(predicate)\n)\n\n// Specialized repository with persistence\nFileRepository := Repository clone\nFileRepository filename := \"data.json\"\n\nFileRepository init := method(\n    resend\n    load\n    self\n)\n\nFileRepository load := method(\n    if(File with(filename) exists,\n        data := File with(filename) contents parseJson\n        storage = data map(item, entityFromMap(item))\n        nextId = storage map(e, e id) max + 1\n    )\n)\n\nFileRepository save := method(entity,\n    resend(entity)\n    persist\n    entity\n)\n\nFileRepository persist := method(\n    data := storage map(e, e asMap)\n    File with(filename) openForWriting write(data asJson) close\n)\n\n// Entity\nUser := Object clone\nUser init := method(name, email,\n    self id := nil\n    self name := name\n    self email := email\n    self createdAt := Date now\n    self\n)\n\nUser asMap := method(\n    Map with(\n        \"id\", id,\n        \"name\", name,\n        \"email\", email,\n        \"createdAt\", createdAt asString\n    )\n)\n\n// Usage\nuserRepo := FileRepository clone init\n\nuser1 := User clone init(\"Alice\", \"alice@example.com\")\nuser2 := User clone init(\"Bob\", \"bob@example.com\")\n\nuserRepo save(user1)\nuserRepo save(user2)\n\nfound := userRepo findById(1)\nactive := userRepo where(u, u createdAt > Date now - Duration days(30))\n```\n\n## Observer Pattern\n\nNative implementation using Io's message passing:\n\n```io\nObservable := Object clone\nObservable init := method(\n    self observers := Map clone\n    self\n)\n\nObservable on := method(event, observer, methodName,\n    if(observers hasKey(event) not,\n        observers atPut(event, list())\n    )\n    observers at(event) append(list(observer, methodName))\n    self\n)\n\nObservable off := method(event, observer,\n    if(observers hasKey(event),\n        observers at(event) := observers at(event) reject(pair,\n            pair at(0) == observer\n        )\n    )\n    self\n)\n\nObservable emit := method(event,\n    args := call message arguments slice(1)\n    \n    if(observers hasKey(event),\n        observers at(event) foreach(pair,\n            observer := pair at(0)\n            methodName := pair at(1)\n            \n            msg := Message clone setName(methodName)\n            args foreach(arg, msg appendArg(arg))\n            \n            observer doMessage(msg)\n        )\n    )\n    self\n)\n\n// Example: Stock price monitor\nStock := Observable clone\nStock init := method(symbol, price,\n    resend\n    self symbol := symbol\n    self price := price\n    self\n)\n\nStock setPrice := method(newPrice,\n    oldPrice := price\n    price = newPrice\n    \n    change := ((newPrice - oldPrice) / oldPrice * 100) round\n    emit(\"priceChanged\", symbol, oldPrice, newPrice, change)\n    \n    if(change abs > 5,\n        emit(\"largeMoveDetected\", symbol, change)\n    )\n)\n\nStockAlert := Object clone\nStockAlert onPriceChange := method(symbol, oldPrice, newPrice, change,\n    (\"Price alert: \" .. symbol .. \" moved from $\" .. oldPrice .. \n     \" to $\" .. newPrice .. \" (\" .. change .. \"%)\") println\n)\n\nStockAlert onLargeMove := method(symbol, change,\n    (\"⚠️  Large move detected: \" .. symbol .. \" changed \" .. change .. \"%\") println\n)\n\n// Usage\napple := Stock clone init(\"AAPL\", 150.00)\nalert := StockAlert clone\n\napple on(\"priceChanged\", alert, \"onPriceChange\")\napple on(\"largeMoveDetected\", alert, \"onLargeMove\")\n\napple setPrice(155.00)  // Normal change\napple setPrice(165.00)  // Large move triggers both alerts\n```\n\n## Dependency Injection\n\nUsing Io's dynamic nature for DI:\n\n```io\n// DI Container\nContainer := Object clone\nContainer init := method(\n    self services := Map clone\n    self singletons := Map clone\n    self\n)\n\nContainer register := method(name, factory,\n    services atPut(name, factory)\n    self\n)\n\nContainer singleton := method(name, factory,\n    services atPut(name, factory)\n    singletons atPut(name, nil)\n    self\n)\n\nContainer get := method(name,\n    if(services hasKey(name) not,\n        Exception raise(\"Service '\" .. name .. \"' not registered\")\n    )\n    \n    // Check if singleton\n    if(singletons hasKey(name),\n        if(singletons at(name) isNil,\n            singletons atPut(name, services at(name) call(self))\n        )\n        return singletons at(name)\n    )\n    \n    // Regular service\n    services at(name) call(self)\n)\n\n// Services\nLogger := Object clone\nLogger init := method(output,\n    self output := output\n    self\n)\nLogger log := method(message,\n    output write(\"[\" .. Date now .. \"] \" .. message .. \"\\n\")\n)\n\nDatabase := Object clone\nDatabase init := method(connectionString, logger,\n    self connectionString := connectionString\n    self logger := logger\n    logger log(\"Database initialized: \" .. connectionString)\n    self\n)\n\nUserService := Object clone\nUserService init := method(database, logger,\n    self database := database\n    self logger := logger\n    self\n)\nUserService createUser := method(name,\n    logger log(\"Creating user: \" .. name)\n    // database operations...\n    Map with(\"id\", 1, \"name\", name)\n)\n\n// Configure container\ncontainer := Container clone init\n\ncontainer singleton(\"logger\", block(c,\n    Logger clone init(File standardOutput)\n))\n\ncontainer singleton(\"database\", block(c,\n    Database clone init(\"postgres://localhost/myapp\", c get(\"logger\"))\n))\n\ncontainer register(\"userService\", block(c,\n    UserService clone init(c get(\"database\"), c get(\"logger\"))\n))\n\n// Usage\nservice := container get(\"userService\")\nservice createUser(\"Alice\")\n\n// Different instance each time\nservice1 := container get(\"userService\")\nservice2 := container get(\"userService\")\n(service1 == service2) println  // false\n\n// Same logger instance\nlogger1 := container get(\"logger\")\nlogger2 := container get(\"logger\")\n(logger1 == logger2) println  // true\n```\n\n## Strategy Pattern\n\nLeveraging blocks and dynamic dispatch:\n\n```io\n// Sorting strategies\nSortStrategy := Object clone\n\nBubbleSort := SortStrategy clone\nBubbleSort execute := method(list,\n    result := list copy\n    n := result size\n    \n    for(i, 0, n - 2,\n        for(j, 0, n - i - 2,\n            if(result at(j) > result at(j + 1),\n                temp := result at(j)\n                result atPut(j, result at(j + 1))\n                result atPut(j + 1, temp)\n            )\n        )\n    )\n    result\n)\n\nQuickSort := SortStrategy clone\nQuickSort execute := method(list,\n    if(list size \u003c= 1, return list)\n    \n    pivot := list at(list size / 2)\n    less := list select(x, x \u003c pivot)\n    equal := list select(x, x == pivot)\n    greater := list select(x, x > pivot)\n    \n    execute(less) appendSeq(equal) appendSeq(execute(greater))\n)\n\n// Context\nDataProcessor := Object clone\nDataProcessor init := method(\n    self strategy := QuickSort\n    self\n)\n\nDataProcessor setStrategy := method(s,\n    strategy = s\n    self\n)\n\nDataProcessor process := method(data,\n    \"Processing data...\" println\n    strategy execute(data)\n)\n\n// Usage with different strategies\nprocessor := DataProcessor clone init\n\ndata := list(3, 1, 4, 1, 5, 9, 2, 6)\n\nprocessor setStrategy(BubbleSort) process(data) println\nprocessor setStrategy(QuickSort) process(data) println\n\n// Dynamic strategy selection\nselectStrategy := method(dataSize,\n    if(dataSize \u003c 10, BubbleSort, QuickSort)\n)\n\nprocessor setStrategy(selectStrategy(data size))\n```\n\n## Chain of Responsibility\n\nBuilding processing pipelines:\n\n```io\nHandler := Object clone\nHandler init := method(\n    self next := nil\n    self\n)\n\nHandler setNext := method(handler,\n    next = handler\n    handler\n)\n\nHandler handle := method(request,\n    if(canHandle(request),\n        process(request),\n        if(next, next handle(request), nil)\n    )\n)\n\n// Concrete handlers\nAuthenticationHandler := Handler clone\nAuthenticationHandler canHandle := method(request,\n    request at(\"requiresAuth\")\n)\nAuthenticationHandler process := method(request,\n    if(request at(\"token\") == \"valid-token\",\n        \"Authentication successful\" println\n        request atPut(\"authenticated\", true)\n        if(next, next handle(request), request)\n    ,\n        Exception raise(\"Authentication failed\")\n    )\n)\n\nLoggingHandler := Handler clone\nLoggingHandler canHandle := method(request, true)\nLoggingHandler process := method(request,\n    (\"Logging request: \" .. request at(\"path\")) println\n    if(next, next handle(request), request)\n)\n\nRateLimitHandler := Handler clone\nRateLimitHandler init := method(\n    resend\n    self requests := Map clone\n    self limit := 10\n    self window := 60  // seconds\n    self\n)\nRateLimitHandler canHandle := method(request,\n    request hasKey(\"clientId\")\n)\nRateLimitHandler process := method(request,\n    clientId := request at(\"clientId\")\n    now := Date now\n    \n    if(requests hasKey(clientId) not,\n        requests atPut(clientId, list())\n    )\n    \n    // Clean old requests\n    clientRequests := requests at(clientId) select(time,\n        now - time \u003c window\n    )\n    \n    if(clientRequests size >= limit,\n        Exception raise(\"Rate limit exceeded\"),\n        clientRequests append(now)\n        requests atPut(clientId, clientRequests)\n        if(next, next handle(request), request)\n    )\n)\n\n// Build chain\nchain := LoggingHandler clone \\\n    setNext(RateLimitHandler clone \\\n        setNext(AuthenticationHandler clone))\n\n// Process requests\nrequest := Map with(\n    \"path\", \"/api/users\",\n    \"clientId\", \"client-123\",\n    \"requiresAuth\", true,\n    \"token\", \"valid-token\"\n)\n\nresult := chain handle(request)\n```\n\n## Plugin Architecture\n\nDynamic loading and extension:\n\n```io\nPluginManager := Object clone\nPluginManager init := method(\n    self plugins := Map clone\n    self hooks := Map clone\n    self\n)\n\nPluginManager registerHook := method(name,\n    if(hooks hasKey(name) not,\n        hooks atPut(name, list())\n    )\n    self\n)\n\nPluginManager loadPlugin := method(path,\n    plugin := doFile(path)\n    \n    if(plugin hasSlot(\"name\") not,\n        Exception raise(\"Plugin must have a name\")\n    )\n    \n    plugins atPut(plugin name, plugin)\n    \n    if(plugin hasSlot(\"init\"),\n        plugin init(self)\n    )\n    \n    (\"Plugin loaded: \" .. plugin name) println\n    self\n)\n\nPluginManager hook := method(name,\n    args := call message arguments slice(1)\n    results := list()\n    \n    if(hooks hasKey(name),\n        hooks at(name) foreach(handler,\n            result := handler doMessage(Message clone setName(\"call\") setArguments(args))\n            results append(result)\n        )\n    )\n    \n    results\n)\n\nPluginManager addHook := method(hookName, handler,\n    if(hooks hasKey(hookName) not,\n        registerHook(hookName)\n    )\n    hooks at(hookName) append(handler)\n    self\n)\n\n// Example plugin\nMarkdownPlugin := Object clone\nMarkdownPlugin name := \"markdown\"\nMarkdownPlugin init := method(manager,\n    manager addHook(\"processText\", block(text,\n        // Simple markdown processing\n        text replaceAllRegex(\"\\\\*\\\\*(.*?)\\\\*\\\\*\", \"\u003cstrong>$1\u003c/strong>\") \\\n             replaceAllRegex(\"\\\\*(.*?)\\\\*\", \"\u003cem>$1\u003c/em>\")\n    ))\n    \n    manager addHook(\"getFormats\", block(\n        list(\"markdown\", \"md\")\n    ))\n)\n\n// Usage\nmanager := PluginManager clone init\nmanager registerHook(\"processText\")\nmanager registerHook(\"getFormats\")\n\n// Load plugins\nmanager loadPlugin(\"markdown_plugin.io\")\n\n// Use hooks\ntext := \"This is **bold** and this is *italic*\"\nprocessed := manager hook(\"processText\", text)\nprocessed foreach(result, result println)\n\nformats := manager hook(\"getFormats\")\n\"Supported formats: \" print\nformats flatten unique println\n```\n\n## Event Sourcing\n\nImplementing event-driven architecture:\n\n```io\n// Event\nEvent := Object clone\nEvent init := method(type, data,\n    self type := type\n    self data := data\n    self timestamp := Date now\n    self id := Random uuid\n    self\n)\n\n// Event Store\nEventStore := Object clone\nEventStore init := method(\n    self events := list()\n    self snapshots := Map clone\n    self\n)\n\nEventStore append := method(event,\n    events append(event)\n    self\n)\n\nEventStore getEvents := method(afterId,\n    if(afterId isNil,\n        return events\n    )\n    \n    startIndex := events detectIndex(e, e id == afterId)\n    if(startIndex,\n        events slice(startIndex + 1),\n        list()\n    )\n)\n\n// Aggregate\nAggregate := Object clone\nAggregate init := method(id,\n    self id := id\n    self version := 0\n    self uncommittedEvents := list()\n    self\n)\n\nAggregate applyEvent := method(event,\n    // Override in subclasses\n)\n\nAggregate raiseEvent := method(event,\n    applyEvent(event)\n    uncommittedEvents append(event)\n    version = version + 1\n)\n\nAggregate markEventsAsCommitted := method(\n    uncommittedEvents = list()\n)\n\nAggregate loadFromHistory := method(events,\n    events foreach(event,\n        applyEvent(event)\n        version = version + 1\n    )\n)\n\n// Example: Bank Account aggregate\nBankAccount := Aggregate clone\nBankAccount init := method(id,\n    resend(id)\n    self balance := 0\n    self\n)\n\nBankAccount deposit := method(amount,\n    if(amount \u003c= 0,\n        Exception raise(\"Amount must be positive\")\n    )\n    \n    raiseEvent(Event clone init(\"MoneyDeposited\", \n        Map with(\"accountId\", id, \"amount\", amount)))\n)\n\nBankAccount withdraw := method(amount,\n    if(amount \u003c= 0,\n        Exception raise(\"Amount must be positive\")\n    )\n    if(amount > balance,\n        Exception raise(\"Insufficient funds\")\n    )\n    \n    raiseEvent(Event clone init(\"MoneyWithdrawn\",\n        Map with(\"accountId\", id, \"amount\", amount)))\n)\n\nBankAccount applyEvent := method(event,\n    if(event type == \"MoneyDeposited\",\n        balance = balance + event data at(\"amount\")\n    )\n    \n    if(event type == \"MoneyWithdrawn\",\n        balance = balance - event data at(\"amount\")\n    )\n)\n\n// Repository using event sourcing\nAccountRepository := Object clone\nAccountRepository init := method(eventStore,\n    self eventStore := eventStore\n    self\n)\n\nAccountRepository save := method(account,\n    account uncommittedEvents foreach(event,\n        eventStore append(event)\n    )\n    account markEventsAsCommitted\n)\n\nAccountRepository getById := method(id,\n    events := eventStore getEvents select(e,\n        e data at(\"accountId\") == id\n    )\n    \n    account := BankAccount clone init(id)\n    account loadFromHistory(events)\n    account\n)\n\n// Usage\nstore := EventStore clone init\nrepo := AccountRepository clone init(store)\n\naccount := BankAccount clone init(\"acc-123\")\naccount deposit(100)\naccount withdraw(30)\naccount deposit(50)\n\nrepo save(account)\naccount balance println  // 120\n\n// Rebuild from events\nrebuilt := repo getById(\"acc-123\")\nrebuilt balance println  // 120\n```\n\n## Caching Strategy\n\nMulti-level caching with different policies:\n\n```io\nCache := Object clone\nCache init := method(maxSize, ttl,\n    self maxSize := maxSize\n    self ttl := ttl  // Time to live in seconds\n    self entries := Map clone\n    self accessOrder := list()\n    self\n)\n\nCache get := method(key,\n    if(entries hasKey(key),\n        entry := entries at(key)\n        \n        // Check TTL\n        if(Date now - entry at(\"time\") > ttl,\n            entries removeAt(key)\n            accessOrder remove(key)\n            return nil\n        )\n        \n        // Update access order (LRU)\n        accessOrder remove(key)\n        accessOrder append(key)\n        \n        entry at(\"value\")\n    ,\n        nil\n    )\n)\n\nCache put := method(key, value,\n    // Evict if necessary\n    while(entries size >= maxSize,\n        evictKey := accessOrder removeFirst\n        entries removeAt(evictKey)\n        (\"Cache evicted: \" .. evictKey) println\n    )\n    \n    entries atPut(key, Map with(\n        \"value\", value,\n        \"time\", Date now\n    ))\n    accessOrder append(key)\n    \n    value\n)\n\nCache getOrCompute := method(key, computeBlock,\n    value := get(key)\n    if(value isNil,\n        value = computeBlock call\n        put(key, value)\n    )\n    value\n)\n\n// Multi-level cache\nMultiLevelCache := Object clone\nMultiLevelCache init := method(\n    self l1 := Cache clone init(10, 60)     // Small, fast, 1 minute TTL\n    self l2 := Cache clone init(100, 600)   // Larger, 10 minute TTL\n    self\n)\n\nMultiLevelCache get := method(key,\n    // Check L1\n    value := l1 get(key)\n    if(value, return value)\n    \n    // Check L2\n    value = l2 get(key)\n    if(value,\n        l1 put(key, value)  // Promote to L1\n        return value\n    )\n    \n    nil\n)\n\nMultiLevelCache put := method(key, value,\n    l1 put(key, value)\n    l2 put(key, value)\n    value\n)\n\n// Usage with expensive computation\nfibonacci := Object clone\nfibonacci cache := MultiLevelCache clone init\n\nfibonacci compute := method(n,\n    if(n \u003c= 1, return n)\n    \n    cache get(n) ifNil(\n        (\"Computing fib(\" .. n .. \")\") println\n        result := compute(n - 1) + compute(n - 2)\n        cache put(n, result)\n        result\n    )\n)\n\nfibonacci compute(10) println  // Computes\nfibonacci compute(10) println  // From cache\n```\n\n## Conclusion\n\nThese patterns demonstrate how Io's features—prototype-based inheritance, message passing, blocks, and metaprogramming—combine to create elegant solutions to real-world problems. The language's flexibility allows patterns to be implemented more directly than in many mainstream languages, often with less boilerplate and more expressive code.\n\nThe key insight is that Io's uniform object model means patterns aren't special constructs but natural expressions of the language's core concepts. This makes it easy to adapt patterns to specific needs or create entirely new architectural approaches.\n"}}</script>
+</body>
+</html>

@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="stylesheet" href="../colvmn/style.css">
+<title>Cloning and Inheritance – Io</title>
+  <link rel="alternate" type="text/plain" title="llms.txt" href="/llms.txt">
+  <meta name="description" content="How inheritance chains emerge from the simpler operation of cloning.">
+</head>
+<body>
+<div class="page loaded"><div class="header"><div><h1>Cloning and Inheritance</h1><a class="back-link" href="../index.html">&larr; The Io Programming Language</a></div><a class="brand" href="../index.html">Io</a></div><p class="intro">How inheritance chains emerge from the simpler operation of cloning.</p><nav class="toc"><ul><li><a href="#the-mechanics-of-cloning">The Mechanics of Cloning</a></li><li><a href="#differential-inheritance-in-action">Differential Inheritance in Action</a></li><li><a href="#the-prototype-chain">The Prototype Chain</a></li><li><a href="#method-resolution-order">Method Resolution Order</a></li><li><a href="#multiple-inheritance">Multiple Inheritance</a></li><li><a href="#diamond-problem-resolution">Diamond Problem Resolution</a></li><li><a href="#shallow-vs-deep-cloning">Shallow vs Deep Cloning</a></li><li><a href="#init-methods-and-constructors">init Methods and Constructors</a></li><li><a href="#factory-methods">Factory Methods</a></li><li><a href="#prototype-switching">Prototype Switching</a></li><li><a href="#mixins-and-traits">Mixins and Traits</a></li><li><a href="#clone-hooks">Clone Hooks</a></li><li><a href="#inheritance-patterns">Inheritance Patterns</a></li><li><a href="#testing-inheritance">Testing Inheritance</a></li><li><a href="#performance-considerations">Performance Considerations</a></li><li><a href="#common-pitfalls">Common Pitfalls</a></li><li><a href="#exercises">Exercises</a></li><li><a href="#real-world-example-game-entity-system">Real-World Example: Game Entity System</a></li><li><a href="#conclusion">Conclusion</a></li></ul></nav><div class="section"><div class="section-body"><p>In class-based languages, inheritance is a relationship between classes. In Io's prototype-based world, inheritance emerges from the simpler mechanism of cloning. When you clone an object, the new object maintains a link to its prototype, creating an inheritance chain. This chapter explores how cloning works, how inheritance emerges from it, and how to use these mechanisms effectively.</p></div></div><h2 id="the-mechanics-of-cloning">The Mechanics of Cloning</h2><div class="section"><div class="section-body"><p>When you clone an object in Io, you don't copy all its data. Instead, you create a new, empty object with a reference to the original:</p><pre><code>// Create a prototype
+Animal := Object clone
+Animal species := "Unknown"
+Animal age := 0
+Animal describe := method(
+    ("A " .. age .. " year old " .. species) println
+)
+
+// Clone it
+cat := Animal clone
+
+// cat is empty but linked to Animal
+cat slotNames println        // list() - no local slots!
+cat species println          // "Unknown" - from Animal
+cat age println             // 0 - from Animal
+
+// The link is through 'proto'
+cat proto == Animal println  // true</code></pre><p>This is fundamentally different from copying:</p><pre><code>// If cloning was copying (it's not!), it would work like:
+catCopy := Object clone
+catCopy species := Animal species  // Copy each slot
+catCopy age := Animal age
+catCopy describe := Animal describe
+
+// But cloning actually creates a link:
+catClone := Animal clone  // Empty object linked to Animal</code></pre></div></div><h2 id="differential-inheritance-in-action">Differential Inheritance in Action</h2><div class="section"><div class="section-body"><p>Objects only store their differences from their prototypes:</p><pre><code>Vehicle := Object clone
+Vehicle speed := 60
+Vehicle color := "white"
+Vehicle drive := method(
+    ("Driving at " .. speed .. " mph") println
+)
+
+car := Vehicle clone
+car color = "red"  // Override color
+car model := "Sedan"  // Add new slot
+
+// Inspect what's stored where
+car slotNames println          // list(color, model) - only differences!
+Vehicle slotNames println      // list(speed, color, drive)
+
+// But car can access everything
+car speed println              // 60 - from Vehicle
+car color println              // "red" - from car (overrides Vehicle)
+car model println              // "Sedan" - from car
+car drive                      // "Driving at 60 mph"</code></pre><p>Memory efficiency comparison:</p><pre><code>// Creating 1000 cars
+cars := list()
+1000 times(i,
+    car := Vehicle clone
+    car id := i
+    cars append(car)
+)
+
+// Each car only stores its 'id' slot
+// All share Vehicle's methods and default values
+// In a copying system, each would duplicate everything</code></pre></div></div><h2 id="the-prototype-chain">The Prototype Chain</h2><div class="section"><div class="section-body"><p>Objects can have chains of prototypes:</p><pre><code>Organism := Object clone
+Organism alive := true
+Organism metabolize := method("Converting energy..." println)
+
+Animal := Organism clone
+Animal mobile := true
+Animal move := method("Moving..." println)
+
+Mammal := Animal clone
+Mammal warmBlooded := true
+Mammal nurse := method("Nursing young..." println)
+
+Dog := Mammal clone
+Dog loyal := true
+Dog bark := method("Woof!" println)
+
+fido := Dog clone
+fido name := "Fido"
+
+// fido can access methods from the entire chain
+fido metabolize  // From Organism
+fido move        // From Animal
+fido nurse       // From Mammal
+fido bark        // From Dog
+
+// Trace the chain
+obj := fido
+while(obj != Object,
+    obj type println
+    obj = obj proto
+)
+// Dog
+// Mammal
+// Animal
+// Organism
+// Object</code></pre></div></div><h2 id="method-resolution-order">Method Resolution Order</h2><div class="section"><div class="section-body"><p>When you send a message, Io searches up the prototype chain:</p><pre><code>A := Object clone
+A foo := method("A's foo" println)
+A bar := method("A's bar" println)
+
+B := A clone
+B foo := method("B's foo" println)  // Override
+
+C := B clone
+C bar := method("C's bar" println)  // Override different method
+
+obj := C clone
+
+obj foo  // "B's foo" - found in B (C doesn't have it)
+obj bar  // "C's bar" - found in C
+obj baz  // Exception - not found anywhere</code></pre><p>You can visualize the search:</p><pre><code>Object findSlot := method(slotName,
+    obj := self
+    while(obj,
+        if(obj hasLocalSlot(slotName),
+            ("Found '" .. slotName .. "' in " .. obj type) println
+            return obj getSlot(slotName)
+        )
+        obj = obj proto
+    )
+    "Not found" println
+)
+
+obj findSlot("foo")  // Found 'foo' in B
+obj findSlot("bar")  // Found 'bar' in C</code></pre></div></div><h2 id="multiple-inheritance">Multiple Inheritance</h2><div class="section"><div class="section-body"><p>Io supports multiple inheritance through the <code>protos</code> list:</p><pre><code>// Define capabilities
+Flyable := Object clone
+Flyable altitude := 0
+Flyable fly := method(height,
+    altitude = height
+    ("Flying at " .. altitude .. " feet") println
+)
+
+Swimmable := Object clone
+Swimmable depth := 0
+Swimmable swim := method(d,
+    depth = d
+    ("Swimming at " .. depth .. " feet deep") println
+)
+
+// Single inheritance
+Bird := Flyable clone
+Bird chirp := method("Chirp!" println)
+
+// Multiple inheritance
+Duck := Object clone
+Duck appendProto(Flyable)
+Duck appendProto(Swimmable)
+Duck quack := method("Quack!" println)
+
+mallard := Duck clone
+mallard fly(100)    // Flying at 100 feet
+mallard swim(5)     // Swimming at 5 feet deep
+mallard quack       // Quack!
+
+// Check the prototype list
+Duck protos println  // list(Object_0x..., Flyable_0x..., Swimmable_0x...)</code></pre></div></div><h2 id="diamond-problem-resolution">Diamond Problem Resolution</h2><div class="section"><div class="section-body"><p>The diamond problem occurs when multiple inheritance paths lead to the same ancestor:</p><pre><code>// Diamond structure
+Grandparent := Object clone
+Grandparent value := "from grandparent"
+Grandparent method1 := method("Grandparent method1" println)
+
+Parent1 := Grandparent clone
+Parent1 method1 := method("Parent1 method1" println)
+Parent1 method2 := method("Parent1 method2" println)
+
+Parent2 := Grandparent clone
+Parent2 method1 := method("Parent2 method1" println)
+Parent2 method3 := method("Parent2 method3" println)
+
+Child := Object clone
+Child appendProto(Parent1)
+Child appendProto(Parent2)
+
+// Resolution order matters
+Child method1  // "Parent1 method1" - Parent1 comes first
+
+// Reorder to change priority
+Child protos := list(Parent2, Parent1)
+Child method1  // "Parent2 method1" - Parent2 now comes first</code></pre></div></div><h2 id="shallow-vs-deep-cloning">Shallow vs Deep Cloning</h2><div class="section"><div class="section-body"><p>By default, cloning is shallow&mdash;slot values are shared:</p><pre><code>Original := Object clone
+Original data := list(1, 2, 3)
+Original info := Map clone atPut("key", "value")
+
+Shallow := Original clone
+
+// Modifying mutable objects affects both
+Shallow data append(4)
+Original data println  // list(1, 2, 3, 4) - changed!
+
+// Need deep cloning for independence
+Object deepClone := method(
+    new := self clone
+    self slotNames foreach(name,
+        value := self getSlot(name)
+        if(value hasSlot("clone"),
+            new setSlot(name, value clone)
+        )
+    )
+    new
+)
+
+Deep := Original deepClone
+Deep data append(5)
+Original data println  // list(1, 2, 3, 4) - unchanged
+Deep data println      // list(1, 2, 3, 4, 5)</code></pre></div></div><h2 id="init-methods-and-constructors">init Methods and Constructors</h2><div class="section"><div class="section-body"><p>While Io doesn't have constructors, you can create initialization patterns:</p><pre><code>Person := Object clone
+Person init := method(
+    self name := "Unknown"
+    self age := 0
+    self contacts := list()  // Important: new list for each instance
+    self  // Return self for chaining
+)
+
+// Override clone to call init
+Person clone := method(
+    resend init
+)
+
+// Now each person gets their own contacts list
+alice := Person clone
+alice name = "Alice"
+alice contacts append("Bob")
+
+bob := Person clone
+bob name = "Bob"
+bob contacts append("Charlie")
+
+alice contacts println  // list("Bob") - independent!
+bob contacts println    // list("Charlie")</code></pre></div></div><h2 id="factory-methods">Factory Methods</h2><div class="section"><div class="section-body"><p>Create specialized cloning methods:</p><pre><code>Animal := Object clone
+Animal species := "Unknown"
+Animal sound := "..."
+
+Animal withSpecies := method(s,
+    new := self clone
+    new species = s
+    new
+)
+
+Animal dog := method(
+    self clone species = "Dog" sound = "Woof"
+)
+
+Animal cat := method(
+    self clone species = "Cat" sound = "Meow"
+)
+
+// Usage
+myDog := Animal dog
+myCat := Animal cat
+genericAnimal := Animal withSpecies("Elephant")</code></pre></div></div><h2 id="prototype-switching">Prototype Switching</h2><div class="section"><div class="section-body"><p>Unlike class-based languages, you can change an object's prototype at runtime:</p><pre><code>// Start with one prototype
+Bird := Object clone
+Bird fly := method("Flying..." println)
+
+Fish := Object clone
+Fish swim := method("Swimming..." println)
+
+creature := Bird clone
+creature fly  // "Flying..."
+
+// Change its prototype!
+creature protos = list(Fish)
+creature swim  // "Swimming..."
+creature fly   // Exception - no longer a Bird!
+
+// Or add capabilities
+creature appendProto(Bird)
+creature fly   // "Flying..." - now it can do both
+creature swim  // "Swimming..."</code></pre></div></div><h2 id="mixins-and-traits">Mixins and Traits</h2><div class="section"><div class="section-body"><p>Use prototypes as mixins for composable behavior:</p><pre><code>// Define mixins
+Comparable := Object clone
+Comparable &lt; := method(other, self compare(other) &lt; 0)
+Comparable &gt; := method(other, self compare(other) &gt; 0)
+Comparable == := method(other, self compare(other) == 0)
+Comparable &lt;= := method(other, self compare(other) &lt;= 0)
+Comparable &gt;= := method(other, self compare(other) &gt;= 0)
+
+Enumerable := Object clone
+Enumerable select := method(block,
+    result := list()
+    self foreach(item,
+        if(block call(item), result append(item))
+    )
+    result
+)
+Enumerable map := method(block,
+    result := list()
+    self foreach(item,
+        result append(block call(item))
+    )
+    result
+)
+
+// Use mixins
+SortedList := List clone
+SortedList appendProto(Comparable)
+SortedList appendProto(Enumerable)
+SortedList compare := method(other,
+    self size compare(other size)
+)
+
+list1 := SortedList clone append(1, 2, 3)
+list2 := SortedList clone append(4, 5)
+(list1 &gt; list2) println  // true (3 &gt; 2)</code></pre></div></div><h2 id="clone-hooks">Clone Hooks</h2><div class="section"><div class="section-body"><p>Customize cloning behavior:</p><pre><code>Counted := Object clone
+Counted instances := 0
+
+Counted clone := method(
+    Counted instances = Counted instances + 1
+    new := resend
+    new id := Counted instances
+    new
+)
+
+// Each clone gets a unique ID
+obj1 := Counted clone
+obj2 := Counted clone
+obj3 := Counted clone
+
+obj1 id println  // 1
+obj2 id println  // 2
+obj3 id println  // 3
+Counted instances println  // 3</code></pre></div></div><h2 id="inheritance-patterns">Inheritance Patterns</h2><div class="section"><div class="section-body"><h3 id="classical-inheritance-pattern">Classical Inheritance Pattern</h3><p>Emulate class-based inheritance:</p><pre><code>// Base "class"
+Class := Object clone
+Class new := method(
+    instance := self clone
+    instance init
+    instance
+)
+
+// Define a "class"
+Rectangle := Class clone
+Rectangle init := method(
+    self width := 0
+    self height := 0
+)
+Rectangle area := method(width * height)
+
+// Inheritance
+Square := Rectangle clone
+Square init := method(
+    resend  // Call parent init
+    self side := 0
+)
+Square setSide := method(s,
+    side = s
+    width = s
+    height = s
+)
+
+// Usage
+rect := Rectangle new
+rect width = 10
+rect height = 20
+rect area println  // 200
+
+square := Square new
+square setSide(5)
+square area println  // 25</code></pre><h3 id="delegation-pattern">Delegation Pattern</h3><pre><code>Delegator := Object clone
+Delegator delegate := nil
+Delegator forward := method(
+    if(delegate,
+        delegate doMessage(call message, call sender)
+    ,
+        Exception raise("No delegate set")
+    )
+)
+
+Logger := Object clone
+Logger log := method(msg, ("[LOG] " .. msg) println)
+
+obj := Delegator clone
+obj delegate = Logger
+obj log("Hello")  // [LOG] Hello</code></pre></div></div><h2 id="testing-inheritance">Testing Inheritance</h2><div class="section"><div class="section-body"><p>Check inheritance relationships:</p><pre><code>Object isKindOf := method(proto,
+    obj := self
+    while(obj,
+        if(obj == proto, return true)
+        if(obj protos,
+            obj protos foreach(p,
+                if(p isKindOf(proto), return true)
+            )
+        )
+        obj = obj proto
+    )
+    false
+)
+
+Animal := Object clone
+Dog := Animal clone
+fido := Dog clone
+
+fido isKindOf(Dog) println     // true
+fido isKindOf(Animal) println  // true
+fido isKindOf(Object) println  // true
+fido isKindOf(Number) println  // false</code></pre></div></div><h2 id="performance-considerations">Performance Considerations</h2><div class="section"><div class="section-body"><p>Prototype chains affect performance:</p><pre><code>// Deep chain - slower lookup
+A := Object clone
+B := A clone
+C := B clone
+D := C clone
+E := D clone
+obj := E clone
+obj method := method("Found!")
+
+// Shallow chain - faster lookup
+Flat := Object clone
+Flat method := method("Found!")
+obj2 := Flat clone
+
+// Benchmark
+time(100000 times(obj method))   // Slower
+time(100000 times(obj2 method))  // Faster</code></pre></div></div><h2 id="common-pitfalls">Common Pitfalls</h2><div class="section"><div class="section-body"><h3 id="shared-mutable-state">Shared Mutable State</h3><pre><code>// WRONG - shares list between instances
+BadTemplate := Object clone
+BadTemplate items := list()
+
+obj1 := BadTemplate clone
+obj2 := BadTemplate clone
+obj1 items append(1)
+obj2 items println  // list(1) - Oops! Shared!
+
+// RIGHT - create new list for each instance
+GoodTemplate := Object clone
+GoodTemplate init := method(
+    self items := list()
+    self
+)
+GoodTemplate clone := method(resend init)</code></pre><h3 id="circular-prototypes">Circular Prototypes</h3><pre><code>// Don't do this!
+A := Object clone
+B := Object clone
+A appendProto(B)
+B appendProto(A)  // Circular!
+
+// A foo  // Infinite loop!</code></pre></div></div><h2 id="exercises">Exercises</h2><div class="section"><div class="section-body"><ol><li><strong>Instance Counter</strong>: Create a prototype that tracks how many objects have been cloned from it, directly or indirectly.</li><li><strong>Prototype Inspector</strong>: Write a method that visualizes an object's complete prototype hierarchy as a tree.</li><li><strong>Deep Clone</strong>: Implement a robust deep cloning method that handles circular references.</li><li><strong>Multiple Inheritance Resolver</strong>: Create a system that detects and reports conflicts in multiple inheritance.</li><li><strong>Class Emulator</strong>: Build a complete class-based OOP system on top of Io's prototypes, including abstract classes and interfaces.</li></ol></div></div><h2 id="real-world-example-game-entity-system">Real-World Example: Game Entity System</h2><div class="section"><div class="section-body"><pre><code>// Base entity
+Entity := Object clone
+Entity init := method(
+    self x := 0
+    self y := 0
+    self health := 100
+    self
+)
+Entity clone := method(resend init)
+Entity takeDamage := method(amount,
+    health = health - amount
+    if(health &lt;= 0, self die)
+)
+Entity die := method("Entity died" println)
+
+// Moveable capability
+Moveable := Object clone
+Moveable speed := 1
+Moveable moveTo := method(newX, newY,
+    x = newX
+    y = newY
+)
+
+// Attacker capability
+Attacker := Object clone
+Attacker damage := 10
+Attacker attack := method(target,
+    target takeDamage(damage)
+)
+
+// Compose entities
+Player := Entity clone
+Player appendProto(Moveable)
+Player appendProto(Attacker)
+Player speed = 5
+Player damage = 20
+
+Enemy := Entity clone
+Enemy appendProto(Moveable)
+Enemy appendProto(Attacker)
+Enemy speed = 3
+Enemy damage = 15
+
+// Static entity
+Turret := Entity clone
+Turret appendProto(Attacker)
+Turret damage = 25
+
+// Usage
+player := Player clone
+enemy := Enemy clone
+turret := Turret clone
+
+player moveTo(10, 10)
+player attack(enemy)
+turret attack(player)</code></pre></div></div><h2 id="conclusion">Conclusion</h2><div class="section"><div class="section-body"><p>Cloning and inheritance in Io demonstrate how complex behavior can emerge from simple mechanisms. Instead of classes, instances, and inheritance hierarchies defined at compile time, you have objects cloning objects, maintaining prototype links, and delegating message handling up the chain.</p><p>This flexibility enables patterns impossible in class-based languages: changing inheritance at runtime, mixing in capabilities dynamically, and treating "classes" as first-class objects that can be modified like any other. The trade-off is that you must be more careful about shared state and initialization, but the power and expressiveness gained often make it worthwhile.</p><p>Understanding cloning and inheritance deeply is essential for effective Io programming. These mechanisms aren't just how you create objects&mdash;they're how you structure entire programs.</p></div></div><div class="page-footer"><a class="next-link" href="../Control-Flow/index.html">Control Flow &rarr;</a></div></div>
+<script src="../colvmn/layout/bundle.js" defer></script>
+  <script type="application/json" id="colvmn-prefetch">{"./_index.json":{"ok":false,"status":404},"./_index.md":{"ok":true,"status":200,"content":"---\ntitle: Cloning and Inheritance\ntopTitle: Io\nsubtitle: \"How inheritance chains emerge from the simpler operation of cloning.\"\nnextSectionLink: true\n---\n\nIn class-based languages, inheritance is a relationship between classes. In Io's prototype-based world, inheritance emerges from the simpler mechanism of cloning. When you clone an object, the new object maintains a link to its prototype, creating an inheritance chain. This chapter explores how cloning works, how inheritance emerges from it, and how to use these mechanisms effectively.\n\n## The Mechanics of Cloning\n\nWhen you clone an object in Io, you don't copy all its data. Instead, you create a new, empty object with a reference to the original:\n\n```io\n// Create a prototype\nAnimal := Object clone\nAnimal species := \"Unknown\"\nAnimal age := 0\nAnimal describe := method(\n    (\"A \" .. age .. \" year old \" .. species) println\n)\n\n// Clone it\ncat := Animal clone\n\n// cat is empty but linked to Animal\ncat slotNames println        // list() - no local slots!\ncat species println          // \"Unknown\" - from Animal\ncat age println             // 0 - from Animal\n\n// The link is through 'proto'\ncat proto == Animal println  // true\n```\n\nThis is fundamentally different from copying:\n\n```io\n// If cloning was copying (it's not!), it would work like:\ncatCopy := Object clone\ncatCopy species := Animal species  // Copy each slot\ncatCopy age := Animal age\ncatCopy describe := Animal describe\n\n// But cloning actually creates a link:\ncatClone := Animal clone  // Empty object linked to Animal\n```\n\n## Differential Inheritance in Action\n\nObjects only store their differences from their prototypes:\n\n```io\nVehicle := Object clone\nVehicle speed := 60\nVehicle color := \"white\"\nVehicle drive := method(\n    (\"Driving at \" .. speed .. \" mph\") println\n)\n\ncar := Vehicle clone\ncar color = \"red\"  // Override color\ncar model := \"Sedan\"  // Add new slot\n\n// Inspect what's stored where\ncar slotNames println          // list(color, model) - only differences!\nVehicle slotNames println      // list(speed, color, drive)\n\n// But car can access everything\ncar speed println              // 60 - from Vehicle\ncar color println              // \"red\" - from car (overrides Vehicle)\ncar model println              // \"Sedan\" - from car\ncar drive                      // \"Driving at 60 mph\"\n```\n\nMemory efficiency comparison:\n\n```io\n// Creating 1000 cars\ncars := list()\n1000 times(i,\n    car := Vehicle clone\n    car id := i\n    cars append(car)\n)\n\n// Each car only stores its 'id' slot\n// All share Vehicle's methods and default values\n// In a copying system, each would duplicate everything\n```\n\n## The Prototype Chain\n\nObjects can have chains of prototypes:\n\n```io\nOrganism := Object clone\nOrganism alive := true\nOrganism metabolize := method(\"Converting energy...\" println)\n\nAnimal := Organism clone\nAnimal mobile := true\nAnimal move := method(\"Moving...\" println)\n\nMammal := Animal clone\nMammal warmBlooded := true\nMammal nurse := method(\"Nursing young...\" println)\n\nDog := Mammal clone\nDog loyal := true\nDog bark := method(\"Woof!\" println)\n\nfido := Dog clone\nfido name := \"Fido\"\n\n// fido can access methods from the entire chain\nfido metabolize  // From Organism\nfido move        // From Animal\nfido nurse       // From Mammal\nfido bark        // From Dog\n\n// Trace the chain\nobj := fido\nwhile(obj != Object,\n    obj type println\n    obj = obj proto\n)\n// Dog\n// Mammal\n// Animal\n// Organism\n// Object\n```\n\n## Method Resolution Order\n\nWhen you send a message, Io searches up the prototype chain:\n\n```io\nA := Object clone\nA foo := method(\"A's foo\" println)\nA bar := method(\"A's bar\" println)\n\nB := A clone\nB foo := method(\"B's foo\" println)  // Override\n\nC := B clone\nC bar := method(\"C's bar\" println)  // Override different method\n\nobj := C clone\n\nobj foo  // \"B's foo\" - found in B (C doesn't have it)\nobj bar  // \"C's bar\" - found in C\nobj baz  // Exception - not found anywhere\n```\n\nYou can visualize the search:\n\n```io\nObject findSlot := method(slotName,\n    obj := self\n    while(obj,\n        if(obj hasLocalSlot(slotName),\n            (\"Found '\" .. slotName .. \"' in \" .. obj type) println\n            return obj getSlot(slotName)\n        )\n        obj = obj proto\n    )\n    \"Not found\" println\n)\n\nobj findSlot(\"foo\")  // Found 'foo' in B\nobj findSlot(\"bar\")  // Found 'bar' in C\n```\n\n## Multiple Inheritance\n\nIo supports multiple inheritance through the `protos` list:\n\n```io\n// Define capabilities\nFlyable := Object clone\nFlyable altitude := 0\nFlyable fly := method(height,\n    altitude = height\n    (\"Flying at \" .. altitude .. \" feet\") println\n)\n\nSwimmable := Object clone\nSwimmable depth := 0\nSwimmable swim := method(d,\n    depth = d\n    (\"Swimming at \" .. depth .. \" feet deep\") println\n)\n\n// Single inheritance\nBird := Flyable clone\nBird chirp := method(\"Chirp!\" println)\n\n// Multiple inheritance\nDuck := Object clone\nDuck appendProto(Flyable)\nDuck appendProto(Swimmable)\nDuck quack := method(\"Quack!\" println)\n\nmallard := Duck clone\nmallard fly(100)    // Flying at 100 feet\nmallard swim(5)     // Swimming at 5 feet deep\nmallard quack       // Quack!\n\n// Check the prototype list\nDuck protos println  // list(Object_0x..., Flyable_0x..., Swimmable_0x...)\n```\n\n## Diamond Problem Resolution\n\nThe diamond problem occurs when multiple inheritance paths lead to the same ancestor:\n\n```io\n// Diamond structure\nGrandparent := Object clone\nGrandparent value := \"from grandparent\"\nGrandparent method1 := method(\"Grandparent method1\" println)\n\nParent1 := Grandparent clone\nParent1 method1 := method(\"Parent1 method1\" println)\nParent1 method2 := method(\"Parent1 method2\" println)\n\nParent2 := Grandparent clone\nParent2 method1 := method(\"Parent2 method1\" println)\nParent2 method3 := method(\"Parent2 method3\" println)\n\nChild := Object clone\nChild appendProto(Parent1)\nChild appendProto(Parent2)\n\n// Resolution order matters\nChild method1  // \"Parent1 method1\" - Parent1 comes first\n\n// Reorder to change priority\nChild protos := list(Parent2, Parent1)\nChild method1  // \"Parent2 method1\" - Parent2 now comes first\n```\n\n## Shallow vs Deep Cloning\n\nBy default, cloning is shallow—slot values are shared:\n\n```io\nOriginal := Object clone\nOriginal data := list(1, 2, 3)\nOriginal info := Map clone atPut(\"key\", \"value\")\n\nShallow := Original clone\n\n// Modifying mutable objects affects both\nShallow data append(4)\nOriginal data println  // list(1, 2, 3, 4) - changed!\n\n// Need deep cloning for independence\nObject deepClone := method(\n    new := self clone\n    self slotNames foreach(name,\n        value := self getSlot(name)\n        if(value hasSlot(\"clone\"),\n            new setSlot(name, value clone)\n        )\n    )\n    new\n)\n\nDeep := Original deepClone\nDeep data append(5)\nOriginal data println  // list(1, 2, 3, 4) - unchanged\nDeep data println      // list(1, 2, 3, 4, 5)\n```\n\n## init Methods and Constructors\n\nWhile Io doesn't have constructors, you can create initialization patterns:\n\n```io\nPerson := Object clone\nPerson init := method(\n    self name := \"Unknown\"\n    self age := 0\n    self contacts := list()  // Important: new list for each instance\n    self  // Return self for chaining\n)\n\n// Override clone to call init\nPerson clone := method(\n    resend init\n)\n\n// Now each person gets their own contacts list\nalice := Person clone\nalice name = \"Alice\"\nalice contacts append(\"Bob\")\n\nbob := Person clone\nbob name = \"Bob\"\nbob contacts append(\"Charlie\")\n\nalice contacts println  // list(\"Bob\") - independent!\nbob contacts println    // list(\"Charlie\")\n```\n\n## Factory Methods\n\nCreate specialized cloning methods:\n\n```io\nAnimal := Object clone\nAnimal species := \"Unknown\"\nAnimal sound := \"...\"\n\nAnimal withSpecies := method(s,\n    new := self clone\n    new species = s\n    new\n)\n\nAnimal dog := method(\n    self clone species = \"Dog\" sound = \"Woof\"\n)\n\nAnimal cat := method(\n    self clone species = \"Cat\" sound = \"Meow\"\n)\n\n// Usage\nmyDog := Animal dog\nmyCat := Animal cat\ngenericAnimal := Animal withSpecies(\"Elephant\")\n```\n\n## Prototype Switching\n\nUnlike class-based languages, you can change an object's prototype at runtime:\n\n```io\n// Start with one prototype\nBird := Object clone\nBird fly := method(\"Flying...\" println)\n\nFish := Object clone\nFish swim := method(\"Swimming...\" println)\n\ncreature := Bird clone\ncreature fly  // \"Flying...\"\n\n// Change its prototype!\ncreature protos = list(Fish)\ncreature swim  // \"Swimming...\"\ncreature fly   // Exception - no longer a Bird!\n\n// Or add capabilities\ncreature appendProto(Bird)\ncreature fly   // \"Flying...\" - now it can do both\ncreature swim  // \"Swimming...\"\n```\n\n## Mixins and Traits\n\nUse prototypes as mixins for composable behavior:\n\n```io\n// Define mixins\nComparable := Object clone\nComparable \u003c := method(other, self compare(other) \u003c 0)\nComparable > := method(other, self compare(other) > 0)\nComparable == := method(other, self compare(other) == 0)\nComparable \u003c= := method(other, self compare(other) \u003c= 0)\nComparable >= := method(other, self compare(other) >= 0)\n\nEnumerable := Object clone\nEnumerable select := method(block,\n    result := list()\n    self foreach(item,\n        if(block call(item), result append(item))\n    )\n    result\n)\nEnumerable map := method(block,\n    result := list()\n    self foreach(item,\n        result append(block call(item))\n    )\n    result\n)\n\n// Use mixins\nSortedList := List clone\nSortedList appendProto(Comparable)\nSortedList appendProto(Enumerable)\nSortedList compare := method(other,\n    self size compare(other size)\n)\n\nlist1 := SortedList clone append(1, 2, 3)\nlist2 := SortedList clone append(4, 5)\n(list1 > list2) println  // true (3 > 2)\n```\n\n## Clone Hooks\n\nCustomize cloning behavior:\n\n```io\nCounted := Object clone\nCounted instances := 0\n\nCounted clone := method(\n    Counted instances = Counted instances + 1\n    new := resend\n    new id := Counted instances\n    new\n)\n\n// Each clone gets a unique ID\nobj1 := Counted clone\nobj2 := Counted clone\nobj3 := Counted clone\n\nobj1 id println  // 1\nobj2 id println  // 2\nobj3 id println  // 3\nCounted instances println  // 3\n```\n\n## Inheritance Patterns\n\n### Classical Inheritance Pattern\n\nEmulate class-based inheritance:\n\n```io\n// Base \"class\"\nClass := Object clone\nClass new := method(\n    instance := self clone\n    instance init\n    instance\n)\n\n// Define a \"class\"\nRectangle := Class clone\nRectangle init := method(\n    self width := 0\n    self height := 0\n)\nRectangle area := method(width * height)\n\n// Inheritance\nSquare := Rectangle clone\nSquare init := method(\n    resend  // Call parent init\n    self side := 0\n)\nSquare setSide := method(s,\n    side = s\n    width = s\n    height = s\n)\n\n// Usage\nrect := Rectangle new\nrect width = 10\nrect height = 20\nrect area println  // 200\n\nsquare := Square new\nsquare setSide(5)\nsquare area println  // 25\n```\n\n### Delegation Pattern\n\n```io\nDelegator := Object clone\nDelegator delegate := nil\nDelegator forward := method(\n    if(delegate,\n        delegate doMessage(call message, call sender)\n    ,\n        Exception raise(\"No delegate set\")\n    )\n)\n\nLogger := Object clone\nLogger log := method(msg, (\"[LOG] \" .. msg) println)\n\nobj := Delegator clone\nobj delegate = Logger\nobj log(\"Hello\")  // [LOG] Hello\n```\n\n## Testing Inheritance\n\nCheck inheritance relationships:\n\n```io\nObject isKindOf := method(proto,\n    obj := self\n    while(obj,\n        if(obj == proto, return true)\n        if(obj protos,\n            obj protos foreach(p,\n                if(p isKindOf(proto), return true)\n            )\n        )\n        obj = obj proto\n    )\n    false\n)\n\nAnimal := Object clone\nDog := Animal clone\nfido := Dog clone\n\nfido isKindOf(Dog) println     // true\nfido isKindOf(Animal) println  // true\nfido isKindOf(Object) println  // true\nfido isKindOf(Number) println  // false\n```\n\n## Performance Considerations\n\nPrototype chains affect performance:\n\n```io\n// Deep chain - slower lookup\nA := Object clone\nB := A clone\nC := B clone\nD := C clone\nE := D clone\nobj := E clone\nobj method := method(\"Found!\")\n\n// Shallow chain - faster lookup\nFlat := Object clone\nFlat method := method(\"Found!\")\nobj2 := Flat clone\n\n// Benchmark\ntime(100000 times(obj method))   // Slower\ntime(100000 times(obj2 method))  // Faster\n```\n\n## Common Pitfalls\n\n### Shared Mutable State\n\n```io\n// WRONG - shares list between instances\nBadTemplate := Object clone\nBadTemplate items := list()\n\nobj1 := BadTemplate clone\nobj2 := BadTemplate clone\nobj1 items append(1)\nobj2 items println  // list(1) - Oops! Shared!\n\n// RIGHT - create new list for each instance\nGoodTemplate := Object clone\nGoodTemplate init := method(\n    self items := list()\n    self\n)\nGoodTemplate clone := method(resend init)\n```\n\n### Circular Prototypes\n\n```io\n// Don't do this!\nA := Object clone\nB := Object clone\nA appendProto(B)\nB appendProto(A)  // Circular!\n\n// A foo  // Infinite loop!\n```\n\n## Exercises\n\n1. **Instance Counter**: Create a prototype that tracks how many objects have been cloned from it, directly or indirectly.\n\n2. **Prototype Inspector**: Write a method that visualizes an object's complete prototype hierarchy as a tree.\n\n3. **Deep Clone**: Implement a robust deep cloning method that handles circular references.\n\n4. **Multiple Inheritance Resolver**: Create a system that detects and reports conflicts in multiple inheritance.\n\n5. **Class Emulator**: Build a complete class-based OOP system on top of Io's prototypes, including abstract classes and interfaces.\n\n## Real-World Example: Game Entity System\n\n```io\n// Base entity\nEntity := Object clone\nEntity init := method(\n    self x := 0\n    self y := 0\n    self health := 100\n    self\n)\nEntity clone := method(resend init)\nEntity takeDamage := method(amount,\n    health = health - amount\n    if(health \u003c= 0, self die)\n)\nEntity die := method(\"Entity died\" println)\n\n// Moveable capability\nMoveable := Object clone\nMoveable speed := 1\nMoveable moveTo := method(newX, newY,\n    x = newX\n    y = newY\n)\n\n// Attacker capability\nAttacker := Object clone\nAttacker damage := 10\nAttacker attack := method(target,\n    target takeDamage(damage)\n)\n\n// Compose entities\nPlayer := Entity clone\nPlayer appendProto(Moveable)\nPlayer appendProto(Attacker)\nPlayer speed = 5\nPlayer damage = 20\n\nEnemy := Entity clone\nEnemy appendProto(Moveable)\nEnemy appendProto(Attacker)\nEnemy speed = 3\nEnemy damage = 15\n\n// Static entity\nTurret := Entity clone\nTurret appendProto(Attacker)\nTurret damage = 25\n\n// Usage\nplayer := Player clone\nenemy := Enemy clone\nturret := Turret clone\n\nplayer moveTo(10, 10)\nplayer attack(enemy)\nturret attack(player)\n```\n\n## Conclusion\n\nCloning and inheritance in Io demonstrate how complex behavior can emerge from simple mechanisms. Instead of classes, instances, and inheritance hierarchies defined at compile time, you have objects cloning objects, maintaining prototype links, and delegating message handling up the chain.\n\nThis flexibility enables patterns impossible in class-based languages: changing inheritance at runtime, mixing in capabilities dynamically, and treating \"classes\" as first-class objects that can be modified like any other. The trade-off is that you must be more careful about shared state and initialization, but the power and expressiveness gained often make it worthwhile.\n\nUnderstanding cloning and inheritance deeply is essential for effective Io programming. These mechanisms aren't just how you create objects—they're how you structure entire programs.\n"},"../_index.json":{"ok":true,"status":200,"content":"{\n  \"title\": \"The Io Programming Language\",\n  \"topTitle\": \"Io\",\n  \"subtitle\": \"A comprehensive guide to prototype-based programming with Io.\",\n  \"content\": [\n    {\n      \"type\": \"ContentText\",\n      \"content\": \"This book provides an in-depth exploration of the Io programming language, designed for experienced programmers who want to understand prototype-based object-oriented programming. Through detailed comparisons with mainstream languages like JavaScript, Python, Ruby, and Java, readers will gain practical insights into Io's unique paradigm.\"\n    },\n    {\n      \"type\": \"ContentCards\",\n      \"title\": \"Chapters\",\n      \"columns\": 2,\n      \"items\": [\n        \"Preface\",\n        \"Introduction\",\n        \"Getting-Started\",\n        \"Everything-is-an-Object\",\n        \"Prototypes-Not-Classes\",\n        \"Messages-and-Slots\",\n        \"Cloning-and-Inheritance\",\n        \"Control-Flow\",\n        \"Collections\",\n        \"Blocks-and-Closures\",\n        \"Exceptions\",\n        \"Metaprogramming\",\n        \"Concurrency\",\n        \"Domain-Specific-Languages\",\n        \"C-Integration\",\n        \"Real-World-Patterns\",\n        \"Case-Studies\",\n        \"Ecosystem-and-Libraries\",\n        \"Conclusion\"\n      ]\n    }\n  ]\n}\n"},"../Control-Flow/_index.json":{"ok":false,"status":404},"../Control-Flow/_index.md":{"ok":true,"status":200,"content":"---\ntitle: Control Flow\ntopTitle: Io\nsubtitle: \"if, while, for, and friends are just methods—and you can write your own.\"\nnextSectionLink: true\n---\n\nIn most programming languages, control flow structures like `if`, `while`, and `for` are built-in syntax with special rules. In Io, they're just methods that receive messages. This chapter explores how Io's message-passing philosophy extends to control flow, and how you can create your own control structures.\n\n## Everything Is a Message\n\nLet's start with a simple comparison. In C or Java:\n\n```c\nif (x > 5) {\n    printf(\"Big\\n\");\n} else {\n    printf(\"Small\\n\");\n}\n```\n\nThis is special syntax that the compiler understands. But in Io:\n\n```io\nif(x > 5,\n    \"Big\" println,\n    \"Small\" println\n)\n```\n\nThe `if` is just a method call! You can even see its implementation:\n\n```io\nif println\n// method(...)\n\n// You could redefine it (don't actually do this!)\nObject if := method(condition, trueBlock, falseBlock,\n    \"Making a decision!\" println\n    resend  // Call original if\n)\n```\n\n## The if Method\n\nThe `if` method takes two or three arguments:\n\n```io\n// Two arguments: if-then\nif(temperature > 30,\n    \"It's hot!\" println\n)\n\n// Three arguments: if-then-else\nif(temperature > 30,\n    \"It's hot!\" println,\n    \"It's nice!\" println\n)\n\n// if returns the value of the executed block\nresult := if(5 > 3, \"yes\", \"no\")\nresult println  // \"yes\"\n\n// Nested if\ncategory := if(score > 90, \"A\",\n    if(score > 80, \"B\",\n        if(score > 70, \"C\", \"F\")\n    )\n)\n```\n\n## Understanding Blocks\n\nThe key to Io's control flow is that code blocks are objects that aren't evaluated immediately:\n\n```io\n// This prints immediately\n\"Hello\" println\n\n// This creates a block object but doesn't execute it\nblock := method(\"Hello\" println)\n\n// Execute it later\nblock call  // Now it prints \"Hello\"\n\n// Blocks in if\nif(true,\n    \"This is a block\" println  // Not executed until if decides to\n)\n```\n\nThis lazy evaluation is crucial. If both branches of an `if` were evaluated immediately, both would execute!\n\n```io\n// In a hypothetical eager language:\neagerIf := method(condition, trueValue, falseValue,\n    if(condition, trueValue, falseValue)\n)\n\nx := 5\neagerIf(x > 3,\n    \"Greater\" println,  // This executes immediately\n    \"Lesser\" println    // This also executes immediately!\n)\n// Would print both!\n\n// But Io's if receives unevaluated blocks\nif(x > 3,\n    \"Greater\" println,  // Only this executes\n    \"Lesser\" println    // This never executes\n)\n```\n\n## The while Loop\n\nThe `while` method repeatedly evaluates its condition and body:\n\n```io\ni := 0\nwhile(i \u003c 5,\n    i println\n    i = i + 1\n)\n// Prints 0, 1, 2, 3, 4\n\n// while returns nil by default\nresult := while(false, \"Never runs\")\nresult println  // nil\n\n// Infinite loops\nwhile(true,\n    input := File standardInput readLine\n    if(input == \"quit\", break)\n    (\"You said: \" .. input) println\n)\n```\n\n## The for Loop\n\nThe `for` method provides a counting loop:\n\n```io\n// Basic for loop\nfor(i, 1, 5,\n    i println\n)\n// Prints 1, 2, 3, 4, 5\n\n// With step\nfor(i, 0, 10, 2,\n    i println\n)\n// Prints 0, 2, 4, 6, 8, 10\n\n// Backward\nfor(i, 5, 1,\n    i println\n)\n// Prints 5, 4, 3, 2, 1\n\n// for can return values\nsum := 0\nfor(i, 1, 100,\n    sum = sum + i\n)\nsum println  // 5050\n```\n\n## The loop Method\n\nIo provides a `loop` method for infinite loops:\n\n```io\ncount := 0\nloop(\n    count = count + 1\n    if(count > 10, break)\n    count println\n)\n\n// Equivalent to while(true, ...)\n```\n\n## break and continue\n\nThese work like in other languages, but they're methods too:\n\n```io\n// break exits the loop\nfor(i, 1, 10,\n    if(i == 5, break)\n    i println\n)\n// Prints 1, 2, 3, 4\n\n// continue skips to next iteration\nfor(i, 1, 10,\n    if(i % 2 == 0, continue)\n    i println\n)\n// Prints 1, 3, 5, 7, 9\n\n// break can return a value\nresult := for(i, 1, 100,\n    if(i * i > 50, break(i))\n)\nresult println  // 8 (first i where i*i > 50)\n```\n\n## The repeat Method\n\nA simpler counting mechanism:\n\n```io\n5 repeat(\"Hello\" println)\n// Prints \"Hello\" 5 times\n\n// repeat with index\n5 repeat(i, \n    (\"Count: \" .. i) println\n)\n// Count: 0\n// Count: 1\n// Count: 2\n// Count: 3\n// Count: 4\n```\n\n## Creating Custom Control Structures\n\nSince control structures are just methods, you can create your own:\n\n```io\n// unless: opposite of if\nObject unless := method(condition, falseBlock,\n    if(condition not, falseBlock call)\n)\n\nunless(5 > 10,\n    \"5 is not greater than 10\" println\n)\n\n// until: opposite of while\nObject until := method(condition, body,\n    while(condition not, body)\n)\n\nx := 0\nuntil(x > 5,\n    x println\n    x = x + 1\n)\n\n// times: repeat n times with cleaner syntax\nNumber times := method(body,\n    for(i, 1, self, body)\n)\n\n3 times(\"Hello\" println)\n```\n\n## The elseif Pattern\n\nIo uses `elseif` for chained conditionals:\n\n```io\nscore := 85\n\nif(score >= 90) then(\n    \"A\" println\n) elseif(score >= 80) then(\n    \"B\" println\n) elseif(score >= 70) then(\n    \"C\" println\n) else(\n    \"F\" println\n)\n// Prints \"B\"\n\n// This is actually a chain of methods\n// if returns a special object when false\n// that object has elseif and else methods\n```\n\n## Switch-like Behavior\n\nIo doesn't have a switch statement, but you can build one:\n\n```io\nObject switch := method(value,\n    self switchValue := value\n    self\n)\n\nObject case := method(testValue, action,\n    if(switchValue == testValue,\n        action call\n        self switchMatched := true\n    )\n    self\n)\n\nObject default := method(action,\n    if(hasSlot(\"switchMatched\") not,\n        action call\n    )\n    self\n)\n\n// Usage\nday := \"Tuesday\"\n\nswitch(day) case(\"Monday\", \n    \"Start of the week\" println\n) case(\"Tuesday\",\n    \"Second day\" println\n) case(\"Friday\",\n    \"TGIF!\" println\n) default(\n    \"Regular day\" println\n)\n// Prints \"Second day\"\n```\n\n## Pattern Matching\n\nBuild more sophisticated matching:\n\n```io\nObject match := method(\n    self matchValue := call evalArgAt(0)\n    self matchContext := call sender\n    self\n)\n\nObject when := method(pattern, action,\n    if(hasSlot(\"matchFound\") not,\n        matched := false\n        \n        // Check different pattern types\n        if(pattern type == \"Block\",\n            matched = pattern call(matchValue),\n            matched = (pattern == matchValue)\n        )\n        \n        if(matched,\n            self matchResult := action call(matchValue)\n            self matchFound := true\n        )\n    )\n    self\n)\n\nObject otherwise := method(action,\n    if(hasSlot(\"matchFound\") not,\n        self matchResult := action call(matchValue)\n    )\n    matchResult\n)\n\n// Usage\nresult := match(x) when(\n    block(v, v \u003c 0), \n    method(v, \"negative\")\n) when(\n    0,\n    method(v, \"zero\")\n) when(\n    block(v, v > 0),\n    method(v, \"positive\")\n) otherwise(\n    method(v, \"unknown\")\n)\n```\n\n## Iterating Over Collections\n\nCollections have their own iteration methods:\n\n```io\n// List iteration\nlist(1, 2, 3) foreach(item,\n    item println\n)\n\n// With index\nlist(\"a\", \"b\", \"c\") foreach(i, item,\n    (i .. \": \" .. item) println\n)\n// 0: a\n// 1: b\n// 2: c\n\n// Map iteration\nmap := Map clone\nmap atPut(\"name\", \"Alice\")\nmap atPut(\"age\", 30)\n\nmap foreach(key, value,\n    (key .. \" = \" .. value) println\n)\n// name = Alice\n// age = 30\n```\n\n## Functional Control Flow\n\nIo supports functional programming patterns:\n\n```io\n// map: transform each element\nsquares := list(1, 2, 3, 4) map(x, x * x)\nsquares println  // list(1, 4, 9, 16)\n\n// select: filter elements\nevens := list(1, 2, 3, 4, 5, 6) select(x, x % 2 == 0)\nevens println  // list(2, 4, 6)\n\n// detect: find first matching element\nfirst_big := list(1, 3, 5, 7, 9) detect(x, x > 5)\nfirst_big println  // 7\n\n// reduce: aggregate elements\nsum := list(1, 2, 3, 4, 5) reduce(+)\nsum println  // 15\n\nproduct := list(1, 2, 3, 4) reduce(a, b, a * b)\nproduct println  // 24\n```\n\n## Lazy Evaluation Control\n\nCreate control structures with lazy evaluation:\n\n```io\nObject lazyIf := method(\n    condition := call argAt(0)\n    trueBlock := call argAt(1)\n    falseBlock := call argAt(2)\n    \n    if(condition doInContext(call sender),\n        trueBlock doInContext(call sender),\n        if(falseBlock,\n            falseBlock doInContext(call sender)\n        )\n    )\n)\n\n// Both condition and blocks are lazy\nx := 5\nlazyIf(x > 3 and computeExpensive(),\n    \"True branch\" println,\n    \"False branch\" println\n)\n```\n\n## Exception Handling as Control Flow\n\nIo's `try` is also a control flow method:\n\n```io\ntry(\n    // Code that might fail\n    riskyOperation()\n) catch(Exception,\n    \"An error occurred\" println\n)\n\n// try-catch-finally pattern\nresult := try(\n    file := File with(\"data.txt\") openForReading\n    file contents\n) catch(Exception, e,\n    (\"Error: \" .. e message) println\n    nil\n) finally(\n    if(file, file close)\n)\n```\n\n## Performance Considerations\n\nSince control structures are methods, they have overhead:\n\n```io\n// Method-based loop (slower)\ni := 0\nwhile(i \u003c 1000000,\n    i = i + 1\n)\n\n// But you can't really avoid it in Io\n// The language is optimized for expressiveness over speed\n```\n\n## Advanced: Coroutine-based Control\n\nIo's coroutines enable advanced control flow:\n\n```io\n// Generator pattern\nGenerator := Object clone\nGenerator init := method(\n    self coro := Coroutine currentCoroutine\n    self\n)\n\nGenerator yield := method(value,\n    coro pause(value)\n)\n\nGenerator fibonacci := method(\n    a := 0\n    b := 1\n    loop(\n        yield(a)\n        temp := a + b\n        a = b\n        b = temp\n    )\n)\n\n// Usage\ngen := Generator clone\nfib := gen @fibonacci  // @ runs in new coroutine\n\n10 repeat(\n    fib resume println\n)\n// 0, 1, 1, 2, 3, 5, 8, 13, 21, 34\n```\n\n## Common Patterns\n\n### Early Return Pattern\n\n```io\nObject findFirst := method(list, condition,\n    list foreach(item,\n        if(condition call(item),\n            return item\n        )\n    )\n    nil\n)\n\nresult := findFirst(list(1, 2, 3, 4, 5), \n    block(x, x > 3)\n)\nresult println  // 4\n```\n\n### Guard Clause Pattern\n\n```io\nprocessData := method(data,\n    if(data isNil, return \"No data\")\n    if(data size == 0, return \"Empty data\")\n    if(data size > 1000, return \"Too much data\")\n    \n    // Process data\n    \"Processed\" return\n)\n```\n\n### Loop with State\n\n```io\nObject loopWithState := method(initial, condition, update, body,\n    state := initial\n    while(condition call(state),\n        body call(state)\n        state = update call(state)\n    )\n    state\n)\n\n// Sum squares until sum > 100\nresult := loopWithState(\n    list(0, 1),  // [sum, n]\n    block(state, state at(0) \u003c= 100),\n    block(state, list(state at(0) + state at(1) squared, state at(1) + 1)),\n    block(state, (\"n=\" .. state at(1) .. \" sum=\" .. state at(0)) println)\n)\n```\n\n## Debugging Control Flow\n\n```io\nObject trace := method(label,\n    (label .. \" - evaluating\") println\n    self\n)\n\nObject debugIf := method(condition, trueBlock, falseBlock,\n    \"Evaluating condition...\" println\n    result := condition\n    (\"Condition is: \" .. result) println\n    \n    if(result,\n        \"Taking true branch\" println\n        trueBlock,\n        \"Taking false branch\" println\n        falseBlock\n    )\n)\n\nx := 5\ndebugIf(x trace(\"x\") > trace(\"3\") 3,\n    \"Greater\" println,\n    \"Lesser\" println\n)\n```\n\n## Exercises\n\n1. **do-while Loop**: Implement a `doWhile` method that executes the body at least once.\n\n2. **for-each with Break**: Create a `forEachBreakable` that allows breaking with a return value.\n\n3. **Retry Logic**: Build a `retry` control structure that retries an operation n times on failure.\n\n4. **Parallel If**: Create a `parallelIf` that evaluates both branches concurrently and returns the first to complete.\n\n5. **State Machine**: Implement a state machine DSL using custom control structures.\n\n## Real-World Example: Retry with Backoff\n\n```io\nObject retryWithBackoff := method(maxAttempts, baseDelay, operation,\n    attempt := 1\n    lastError := nil\n    \n    while(attempt \u003c= maxAttempts,\n        try(\n            return operation call(attempt)\n        ) catch(Exception, e,\n            lastError = e\n            if(attempt \u003c maxAttempts,\n                delay := baseDelay * (2 pow(attempt - 1))\n                (\"Attempt \" .. attempt .. \" failed, waiting \" .. delay .. \"ms\") println\n                System sleep(delay / 1000)\n            )\n        )\n        attempt = attempt + 1\n    )\n    \n    Exception raise(\"Failed after \" .. maxAttempts .. \" attempts: \" .. lastError message)\n)\n\n// Usage\nresult := retryWithBackoff(3, 100,\n    block(attempt,\n        (\"Trying attempt \" .. attempt) println\n        if(Random value \u003c 0.7,\n            Exception raise(\"Random failure\"),\n            \"Success!\"\n        )\n    )\n)\n```\n\n## Conclusion\n\nIo's approach to control flow—implementing everything as methods rather than special syntax—is both radical and elegant. It demonstrates the power of Io's uniform message-passing model: when everything is a message, even fundamental programming constructs become malleable and extensible.\n\nThis flexibility allows you to:\n- Create domain-specific control structures\n- Implement new programming paradigms\n- Debug and trace control flow\n- Understand exactly how your program executes\n\nThe cost is performance and perhaps initial unfamiliarity. But the benefit is a deep understanding of control flow and the ability to shape the language to your needs rather than being constrained by built-in constructs.\n"}}</script>
+</body>
+</html>

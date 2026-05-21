@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="stylesheet" href="../colvmn/style.css">
+<title>Metaprogramming – Io</title>
+  <link rel="alternate" type="text/plain" title="llms.txt" href="/llms.txt">
+  <meta name="description" content="Inspecting, modifying, and generating code at runtime.">
+</head>
+<body>
+<div class="page loaded"><div class="header"><div><h1>Metaprogramming</h1><a class="back-link" href="../index.html">&larr; The Io Programming Language</a></div><a class="brand" href="../index.html">Io</a></div><p class="intro">Inspecting, modifying, and generating code at runtime.</p><nav class="toc"><ul><li><a href="#messages-as-data">Messages as Data</a></li><li><a href="#building-messages-programmatically">Building Messages Programmatically</a></li><li><a href="#method-introspection">Method Introspection</a></li><li><a href="#the-call-object">The call Object</a></li><li><a href="#dynamic-method-creation">Dynamic Method Creation</a></li><li><a href="#method-missing-pattern">Method Missing Pattern</a></li><li><a href="#code-generation">Code Generation</a></li><li><a href="#aspect-oriented-programming">Aspect-Oriented Programming</a></li><li><a href="#macro-system">Macro System</a></li><li><a href="#self-modifying-code">Self-Modifying Code</a></li><li><a href="#reflection-api">Reflection API</a></li><li><a href="#dsl-creation-with-metaprogramming">DSL Creation with Metaprogramming</a></li><li><a href="#performance-profiling">Performance Profiling</a></li><li><a href="#compile-time-computation">Compile-Time Computation</a></li><li><a href="#method-combination">Method Combination</a></li><li><a href="#common-pitfalls">Common Pitfalls</a></li><li><a href="#exercises">Exercises</a></li><li><a href="#real-world-example-activerecord-pattern">Real-World Example: ActiveRecord Pattern</a></li><li><a href="#conclusion">Conclusion</a></li></ul></nav><div class="section"><div class="section-body"><p>Metaprogramming&mdash;writing code that manipulates code&mdash;is where Io truly shines. Since everything in Io is an object, including messages and methods, you can inspect, modify, and generate code at runtime. This chapter explores Io's powerful metaprogramming capabilities.</p></div></div><h2 id="messages-as-data">Messages as Data</h2><div class="section"><div class="section-body"><p>In Io, code is data. Messages are objects you can create, inspect, and manipulate:</p><pre><code>// Create a message from code
+msg := message(2 + 3 * 4)
+
+// Inspect its structure
+msg println              // 2 +(3 *(4))
+msg name println         // +
+msg arguments println    // list(Message_0x...)
+msg arguments at(0) println  // 3 *(4)
+
+// Evaluate it
+result := msg doInContext(Lobby)
+result println           // 14
+
+// Modify it
+msg setName("*")
+msg doInContext(Lobby) println  // 6 (now it's 2 * 3 * 4)</code></pre><p>Compare this to Lisp's code-as-data philosophy:</p><pre><code>; Lisp
+(defparameter code '(+ 2 (* 3 4)))
+(eval code)  ; 14</code></pre><p>But Io uses messages instead of lists, which feels more natural for object-oriented code.</p></div></div><h2 id="building-messages-programmatically">Building Messages Programmatically</h2><div class="section"><div class="section-body"><pre><code>// Build a message from scratch
+msg := Message clone
+msg setName("println")
+msg setArguments(list(Message clone setName("\"Hello, World!\"")))
+
+// Execute it
+Lobby doMessage(msg)  // Hello, World!
+
+// Build more complex messages
+createAdder := method(n,
+    msg := Message clone setName("+")
+    msg setArguments(list(Message clone setName(n asString)))
+    msg
+)
+
+adder5 := createAdder(5)
+7 doMessage(adder5) println  // 12</code></pre></div></div><h2 id="method-introspection">Method Introspection</h2><div class="section"><div class="section-body"><p>Methods are objects you can examine and modify:</p><pre><code>obj := Object clone
+obj greet := method(name, "Hello, " .. name .. "!")
+
+// Get the method object
+m := obj getSlot("greet")
+m type println                    // Block
+m argumentNames println           // list(name)
+m code println                   // "Hello, " ..(name) ..("!")
+
+// Modify method implementation
+obj greet = method(name, "Goodbye, " .. name .. "!")
+obj greet("World") println       // Goodbye, World!
+
+// Copy methods between objects
+other := Object clone
+other sayHi := obj getSlot("greet")
+other sayHi("Io") println        // Goodbye, Io!</code></pre></div></div><h2 id="the-call-object">The call Object</h2><div class="section"><div class="section-body"><p>The <code>call</code> object provides runtime context information:</p><pre><code>Object introspect := method(
+    "=== Call Introspection ===" println
+    ("Sender: " .. call sender type) println
+    ("Target: " .. call target type) println
+    ("Message: " .. call message) println
+    ("Arguments: " .. call message arguments) println
+    ("Activated: " .. call activated) println
+    "========================" println
+)
+
+TestObj := Object clone
+TestObj test := method(a, b,
+    introspect
+    a + b
+)
+
+TestObj test(5, 3)
+// === Call Introspection ===
+// Sender: Lobby
+// Target: TestObj
+// Message: introspect
+// Arguments: list()
+// Activated: method(...)
+// ========================</code></pre></div></div><h2 id="dynamic-method-creation">Dynamic Method Creation</h2><div class="section"><div class="section-body"><p>Create methods at runtime:</p><pre><code>// Create getters and setters dynamically
+Object addProperty := method(name, defaultValue,
+    // Create storage slot
+    self setSlot("_" .. name, defaultValue)
+    
+    // Create getter
+    self setSlot(name, 
+        method(self getSlot("_" .. call message name))
+    )
+    
+    // Create setter
+    self setSlot("set" .. name asCapitalized,
+        method(value,
+            self setSlot("_" .. call message name beforeSeq("set") asLowercase, value)
+            self  // For chaining
+        )
+    )
+)
+
+Person := Object clone
+Person addProperty("name", "Unknown")
+Person addProperty("age", 0)
+
+p := Person clone
+p setName("Alice") setAge(30)
+p name println   // Alice
+p age println    // 30</code></pre></div></div><h2 id="method-missing-pattern">Method Missing Pattern</h2><div class="section"><div class="section-body"><p>Intercept undefined method calls:</p><pre><code>DynamicObject := Object clone
+DynamicObject forward := method(
+    messageName := call message name
+    args := call message arguments
+    
+    ("Intercepted: " .. messageName) println
+    ("Arguments: " .. args) println
+    
+    // Handle dynamically
+    if(messageName beginsWithSeq("get"),
+        property := messageName afterSeq("get") asLowercase
+        return self getSlot(property)
+    )
+    
+    if(messageName beginsWithSeq("set"),
+        property := messageName afterSeq("set") asLowercase
+        value := call evalArgAt(0)
+        return self setSlot(property, value)
+    )
+    
+    Exception raise("Unknown method: " .. messageName)
+)
+
+obj := DynamicObject clone
+obj setName("Bob")      // Intercepted: setName
+obj getName println      // Bob</code></pre></div></div><h2 id="code-generation">Code Generation</h2><div class="section"><div class="section-body"><p>Generate code as strings and evaluate:</p><pre><code>// Generate a class-like structure
+generateClass := method(className, properties,
+    code := className .. " := Object clone\n"
+    
+    // Generate init method
+    code = code .. className .. " init := method(\n"
+    properties foreach(prop,
+        code = code .. "    self " .. prop .. " := nil\n"
+    )
+    code = code .. "    self\n)\n"
+    
+    // Generate property accessors
+    properties foreach(prop,
+        // Getter
+        code = code .. className .. " " .. prop .. " := method(_" .. prop .. ")\n"
+        // Setter
+        code = code .. className .. " set" .. prop asCapitalized .. " := method(v, _" .. prop .. " = v; self)\n"
+    )
+    
+    code doString  // Evaluate the generated code
+    Lobby getSlot(className)  // Return the created object
+)
+
+// Use the generator
+Car := generateClass("Car", list("make", "model", "year"))
+myCar := Car clone init
+myCar setMake("Toyota") setModel("Camry") setYear(2020)
+myCar make println  // Toyota</code></pre></div></div><h2 id="aspect-oriented-programming">Aspect-Oriented Programming</h2><div class="section"><div class="section-body"><p>Implement cross-cutting concerns:</p><pre><code>// Method wrapping for logging
+Object addLogging := method(methodName,
+    original := self getSlot(methodName)
+    
+    self setSlot(methodName, method(
+        ("Calling " .. methodName .. " with args: " .. call message arguments) println
+        result := nil
+        e := try(result = original doMessage(call message, call sender))
+        if(e,
+            ("Error in " .. methodName .. ": " .. e message) println
+            e raise,
+            ("Returned: " .. result) println
+            result
+        )
+    ))
+)
+
+Calculator := Object clone
+Calculator add := method(a, b, a + b)
+Calculator divide := method(a, b, a / b)
+
+Calculator addLogging("add")
+Calculator addLogging("divide")
+
+Calculator add(5, 3)
+// Calling add with args: list(5, 3)
+// Returned: 8
+
+Calculator divide(10, 0)
+// Calling divide with args: list(10, 0)
+// Error in divide: divide by zero</code></pre></div></div><h2 id="macro-system">Macro System</h2><div class="section"><div class="section-body"><p>Io's macros transform code before evaluation:</p><pre><code>// Define a macro
+Object unless := macro(condition, action,
+    // Macros receive unevaluated arguments as messages
+    // Transform to if(condition not, action)
+    message(if) setArguments(
+        list(
+            message(not) setTarget(condition),
+            action
+        )
+    )
+)
+
+// Use the macro
+x := 5
+unless(x &gt; 10, "x is not greater than 10" println)
+// x is not greater than 10
+
+// Timing macro
+Object time := macro(code,
+    // Generate timing code
+    message(do) setArguments(list(
+        message(start := Date now),
+        code,
+        message(elapsed := Date now - start),
+        message(("Elapsed: " .. elapsed) println),
+        message(result)
+    ))
+)
+
+// Use it
+time(
+    sum := 0
+    for(i, 1, 1000000, sum = sum + i)
+    sum
+)
+// Elapsed: 0.234</code></pre></div></div><h2 id="self-modifying-code">Self-Modifying Code</h2><div class="section"><div class="section-body"><p>Objects can modify their own methods:</p><pre><code>Counter := Object clone
+Counter count := 0
+Counter increment := method(
+    count = count + 1
+    
+    // Self-modify after 5 calls
+    if(count &gt;= 5,
+        self increment = method(
+            Exception raise("Counter limit reached")
+        )
+    )
+    
+    count
+)
+
+c := Counter clone
+5 repeat(i, c increment println)  // 1, 2, 3, 4, 5
+c increment  // Exception: Counter limit reached</code></pre></div></div><h2 id="reflection-api">Reflection API</h2><div class="section"><div class="section-body"><p>Io provides comprehensive reflection capabilities:</p><pre><code>// Object introspection utilities
+Object describe := method(
+    ("Type: " .. self type) println
+    
+    "Local Slots:" println
+    self slotNames sort foreach(name,
+        value := self getSlot(name)
+        ("  " .. name .. " = " .. value type) println
+    )
+    
+    "Proto chain:" println
+    proto := self proto
+    while(proto and proto != Object,
+        ("  -&gt; " .. proto type) println
+        proto = proto proto
+    )
+)
+
+// Usage
+person := Object clone
+person name := "Alice"
+person age := 30
+person greet := method("Hello!")
+
+person describe
+// Type: Object
+// Local Slots:
+//   age = Number
+//   greet = Block
+//   name = Sequence
+// Proto chain:
+//   -&gt; Object</code></pre></div></div><h2 id="dsl-creation-with-metaprogramming">DSL Creation with Metaprogramming</h2><div class="section"><div class="section-body"><p>Build domain-specific languages:</p><pre><code>// SQL-like DSL
+Table := Object clone
+Table columns := list()
+Table rows := list()
+
+Table select := method(
+    query := SelectQuery clone
+    query table := self
+    query
+)
+
+SelectQuery := Object clone
+SelectQuery conditions := list()
+
+SelectQuery where := method(
+    // Parse conditions from arguments
+    args := call message arguments
+    args foreach(arg,
+        conditions append(arg)
+    )
+    self
+)
+
+SelectQuery execute := method(
+    table rows select(row,
+        result := true
+        conditions foreach(cond,
+            result = result and cond doInContext(row)
+        )
+        result
+    )
+)
+
+// Usage
+users := Table clone
+users columns = list("name", "age", "city")
+users rows = list(
+    Object clone do(name := "Alice"; age := 30; city := "NYC"),
+    Object clone do(name := "Bob"; age := 25; city := "LA"),
+    Object clone do(name := "Charlie"; age := 35; city := "NYC")
+)
+
+results := users select where(age &gt; 25, city == "NYC") execute
+results foreach(r, (r name .. ": " .. r age) println)
+// Alice: 30
+// Charlie: 35</code></pre></div></div><h2 id="performance-profiling">Performance Profiling</h2><div class="section"><div class="section-body"><p>Use metaprogramming for profiling:</p><pre><code>Profiler := Object clone
+Profiler stats := Map clone
+
+Object profile := method(methodName,
+    original := self getSlot(methodName)
+    
+    self setSlot(methodName, method(
+        start := Date now
+        result := original doMessage(call message, call sender)
+        elapsed := Date now - start
+        
+        key := self type .. "::" .. methodName
+        if(Profiler stats hasKey(key) not,
+            Profiler stats atPut(key, list(0, 0))
+        )
+        
+        stats := Profiler stats at(key)
+        stats atPut(0, stats at(0) + 1)      // Count
+        stats atPut(1, stats at(1) + elapsed) // Total time
+        
+        result
+    ))
+)
+
+Profiler report := method(
+    "=== Profiling Report ===" println
+    stats foreach(key, data,
+        avg := data at(1) / data at(0)
+        (key .. ": " .. data at(0) .. " calls, " .. 
+         data at(1) .. "s total, " .. avg .. "s avg") println
+    )
+)
+
+// Usage
+Math := Object clone
+Math factorial := method(n,
+    if(n &lt;= 1, 1, n * factorial(n - 1))
+)
+Math profile("factorial")
+
+10 repeat(Math factorial(20))
+Profiler report</code></pre></div></div><h2 id="compile-time-computation">Compile-Time Computation</h2><div class="section"><div class="section-body"><p>Use macros for compile-time optimization:</p><pre><code>// Macro that pre-computes constant expressions
+Object precompute := macro(expr,
+    // If expression contains only literals, evaluate now
+    result := nil
+    e := try(result = expr doInContext(Object clone))
+    
+    if(e isNil,
+        // Successfully evaluated - return literal
+        Message clone setName(result asString),
+        // Contains variables - return original
+        expr
+    )
+)
+
+// Usage
+x := 10
+y := precompute(5 * 6 + 7)  // Computed at parse time
+z := precompute(x * 2)      // Can't precompute, has variable
+
+y println  // 37 (was precomputed)</code></pre></div></div><h2 id="method-combination">Method Combination</h2><div class="section"><div class="section-body"><p>Implement method combination patterns:</p><pre><code>// Before/After/Around methods
+Object addBefore := method(methodName, beforeBlock,
+    original := self getSlot(methodName)
+    self setSlot(methodName, method(
+        beforeBlock doMessage(call message, call sender)
+        original doMessage(call message, call sender)
+    ))
+)
+
+Object addAfter := method(methodName, afterBlock,
+    original := self getSlot(methodName)
+    self setSlot(methodName, method(
+        result := original doMessage(call message, call sender)
+        afterBlock call(result)
+        result
+    ))
+)
+
+Object addAround := method(methodName, aroundBlock,
+    original := self getSlot(methodName)
+    self setSlot(methodName, method(
+        aroundBlock call(original, call message, call sender)
+    ))
+)
+
+// Usage
+BankAccount := Object clone
+BankAccount balance := 100
+BankAccount withdraw := method(amount, balance = balance - amount)
+
+BankAccount addBefore("withdraw", method(amount,
+    ("Withdrawing " .. amount) println
+))
+
+BankAccount addAfter("withdraw", method(result,
+    ("New balance: " .. balance) println
+))
+
+BankAccount addAround("withdraw", method(original, msg, sender,
+    amount := msg argAt(0) doInContext(sender)
+    if(amount &gt; balance,
+        Exception raise("Insufficient funds"),
+        original doMessage(msg, sender)
+    )
+))
+
+account := BankAccount clone
+account withdraw(50)
+// Withdrawing 50
+// New balance: 50</code></pre></div></div><h2 id="common-pitfalls">Common Pitfalls</h2><div class="section"><div class="section-body"><h3 id="evaluation-context">Evaluation Context</h3><pre><code>// PROBLEM: Wrong context
+makeMethod := method(code,
+    method doString(code)  // code evaluates in method's context
+)
+
+obj := Object clone
+obj value := 10
+obj badMethod := makeMethod("value * 2")
+// obj badMethod  // Error: value not found
+
+// SOLUTION: Use message objects
+makeMethod := method(code,
+    method(code doInContext(self))
+)</code></pre><h3 id="performance-impact">Performance Impact</h3><pre><code>// Metaprogramming has runtime cost
+directCall := method(x, x * 2)
+dynamicCall := method(x,
+    msg := Message clone setName("*") setArguments(list(Message clone setName("2")))
+    x doMessage(msg)
+)
+
+// directCall is much faster than dynamicCall</code></pre></div></div><h2 id="exercises">Exercises</h2><div class="section"><div class="section-body"><ol><li><strong>Memoization Decorator</strong>: Create a decorator that automatically memoizes any method.</li><li><strong>Contract System</strong>: Implement Design by Contract with pre/post conditions.</li><li><strong>Mock Object Generator</strong>: Build a system that generates mock objects for testing.</li><li><strong>Dependency Injection</strong>: Create a DI container using metaprogramming.</li><li><strong>ORM</strong>: Build a simple object-relational mapper that generates methods from table schemas.</li></ol></div></div><h2 id="real-world-example-activerecord-pattern">Real-World Example: ActiveRecord Pattern</h2><div class="section"><div class="section-body"><pre><code>// Simple ActiveRecord implementation
+ActiveRecord := Object clone
+ActiveRecord tableName := nil
+ActiveRecord connection := nil  // Database connection
+
+ActiveRecord findById := method(id,
+    sql := "SELECT * FROM " .. tableName .. " WHERE id = " .. id
+    row := connection execute(sql) first
+    if(row,
+        obj := self clone
+        row foreach(column, value,
+            obj setSlot(column, value)
+        )
+        obj
+    )
+)
+
+ActiveRecord save := method(
+    if(hasSlot("id"),
+        // Update
+        sql := "UPDATE " .. tableName .. " SET "
+        updates := list()
+        slotNames foreach(name,
+            if(name != "id",
+                updates append(name .. " = '" .. getSlot(name) .. "'")
+            )
+        )
+        sql = sql .. updates join(", ") .. " WHERE id = " .. id
+    ,
+        // Insert
+        sql := "INSERT INTO " .. tableName
+        columns := list()
+        values := list()
+        slotNames foreach(name,
+            columns append(name)
+            values append("'" .. getSlot(name) .. "'")
+        )
+        sql = sql .. " (" .. columns join(", ") .. ") VALUES (" .. values join(", ") .. ")"
+    )
+    
+    connection execute(sql)
+    self
+)
+
+// Generate model from table
+generateModel := method(name, table, columns,
+    model := ActiveRecord clone
+    model type := name
+    model tableName = table
+    
+    // Add properties
+    columns foreach(column,
+        model setSlot(column, nil)
+    )
+    
+    // Add validations
+    model validate := method(
+        // Generated validation code
+        true
+    )
+    
+    // Store in Lobby
+    Lobby setSlot(name, model)
+    model
+)
+
+// Usage
+User := generateModel("User", "users", list("id", "name", "email", "age"))
+
+user := User clone
+user name = "Alice"
+user email = "alice@example.com"
+user age = 30
+// user save
+
+foundUser := User findById(1)</code></pre></div></div><h2 id="conclusion">Conclusion</h2><div class="section"><div class="section-body"><p>Metaprogramming in Io isn't a special feature&mdash;it's a natural consequence of the language's design. When everything is an object, including code itself, manipulation becomes straightforward. Messages as first-class objects, comprehensive reflection, and runtime modification enable powerful patterns that would require complex machinery in other languages.</p><p>The key to effective metaprogramming in Io is understanding that you're not working with special metaprogramming constructs, but simply manipulating objects that happen to represent code. This uniformity makes metaprogramming accessible and powerful, though it requires careful consideration of evaluation contexts and performance implications.</p></div></div><div class="page-footer"><a class="next-link" href="../Concurrency/index.html">Concurrency &rarr;</a></div></div>
+<script src="../colvmn/layout/bundle.js" defer></script>
+  <script type="application/json" id="colvmn-prefetch">{"./_index.json":{"ok":false,"status":404},"./_index.md":{"ok":true,"status":200,"content":"---\ntitle: Metaprogramming\ntopTitle: Io\nsubtitle: \"Inspecting, modifying, and generating code at runtime.\"\nnextSectionLink: true\n---\n\nMetaprogramming—writing code that manipulates code—is where Io truly shines. Since everything in Io is an object, including messages and methods, you can inspect, modify, and generate code at runtime. This chapter explores Io's powerful metaprogramming capabilities.\n\n## Messages as Data\n\nIn Io, code is data. Messages are objects you can create, inspect, and manipulate:\n\n```io\n// Create a message from code\nmsg := message(2 + 3 * 4)\n\n// Inspect its structure\nmsg println              // 2 +(3 *(4))\nmsg name println         // +\nmsg arguments println    // list(Message_0x...)\nmsg arguments at(0) println  // 3 *(4)\n\n// Evaluate it\nresult := msg doInContext(Lobby)\nresult println           // 14\n\n// Modify it\nmsg setName(\"*\")\nmsg doInContext(Lobby) println  // 6 (now it's 2 * 3 * 4)\n```\n\nCompare this to Lisp's code-as-data philosophy:\n\n```lisp\n; Lisp\n(defparameter code '(+ 2 (* 3 4)))\n(eval code)  ; 14\n```\n\nBut Io uses messages instead of lists, which feels more natural for object-oriented code.\n\n## Building Messages Programmatically\n\n```io\n// Build a message from scratch\nmsg := Message clone\nmsg setName(\"println\")\nmsg setArguments(list(Message clone setName(\"\\\"Hello, World!\\\"\")))\n\n// Execute it\nLobby doMessage(msg)  // Hello, World!\n\n// Build more complex messages\ncreateAdder := method(n,\n    msg := Message clone setName(\"+\")\n    msg setArguments(list(Message clone setName(n asString)))\n    msg\n)\n\nadder5 := createAdder(5)\n7 doMessage(adder5) println  // 12\n```\n\n## Method Introspection\n\nMethods are objects you can examine and modify:\n\n```io\nobj := Object clone\nobj greet := method(name, \"Hello, \" .. name .. \"!\")\n\n// Get the method object\nm := obj getSlot(\"greet\")\nm type println                    // Block\nm argumentNames println           // list(name)\nm code println                   // \"Hello, \" ..(name) ..(\"!\")\n\n// Modify method implementation\nobj greet = method(name, \"Goodbye, \" .. name .. \"!\")\nobj greet(\"World\") println       // Goodbye, World!\n\n// Copy methods between objects\nother := Object clone\nother sayHi := obj getSlot(\"greet\")\nother sayHi(\"Io\") println        // Goodbye, Io!\n```\n\n## The call Object\n\nThe `call` object provides runtime context information:\n\n```io\nObject introspect := method(\n    \"=== Call Introspection ===\" println\n    (\"Sender: \" .. call sender type) println\n    (\"Target: \" .. call target type) println\n    (\"Message: \" .. call message) println\n    (\"Arguments: \" .. call message arguments) println\n    (\"Activated: \" .. call activated) println\n    \"========================\" println\n)\n\nTestObj := Object clone\nTestObj test := method(a, b,\n    introspect\n    a + b\n)\n\nTestObj test(5, 3)\n// === Call Introspection ===\n// Sender: Lobby\n// Target: TestObj\n// Message: introspect\n// Arguments: list()\n// Activated: method(...)\n// ========================\n```\n\n## Dynamic Method Creation\n\nCreate methods at runtime:\n\n```io\n// Create getters and setters dynamically\nObject addProperty := method(name, defaultValue,\n    // Create storage slot\n    self setSlot(\"_\" .. name, defaultValue)\n    \n    // Create getter\n    self setSlot(name, \n        method(self getSlot(\"_\" .. call message name))\n    )\n    \n    // Create setter\n    self setSlot(\"set\" .. name asCapitalized,\n        method(value,\n            self setSlot(\"_\" .. call message name beforeSeq(\"set\") asLowercase, value)\n            self  // For chaining\n        )\n    )\n)\n\nPerson := Object clone\nPerson addProperty(\"name\", \"Unknown\")\nPerson addProperty(\"age\", 0)\n\np := Person clone\np setName(\"Alice\") setAge(30)\np name println   // Alice\np age println    // 30\n```\n\n## Method Missing Pattern\n\nIntercept undefined method calls:\n\n```io\nDynamicObject := Object clone\nDynamicObject forward := method(\n    messageName := call message name\n    args := call message arguments\n    \n    (\"Intercepted: \" .. messageName) println\n    (\"Arguments: \" .. args) println\n    \n    // Handle dynamically\n    if(messageName beginsWithSeq(\"get\"),\n        property := messageName afterSeq(\"get\") asLowercase\n        return self getSlot(property)\n    )\n    \n    if(messageName beginsWithSeq(\"set\"),\n        property := messageName afterSeq(\"set\") asLowercase\n        value := call evalArgAt(0)\n        return self setSlot(property, value)\n    )\n    \n    Exception raise(\"Unknown method: \" .. messageName)\n)\n\nobj := DynamicObject clone\nobj setName(\"Bob\")      // Intercepted: setName\nobj getName println      // Bob\n```\n\n## Code Generation\n\nGenerate code as strings and evaluate:\n\n```io\n// Generate a class-like structure\ngenerateClass := method(className, properties,\n    code := className .. \" := Object clone\\n\"\n    \n    // Generate init method\n    code = code .. className .. \" init := method(\\n\"\n    properties foreach(prop,\n        code = code .. \"    self \" .. prop .. \" := nil\\n\"\n    )\n    code = code .. \"    self\\n)\\n\"\n    \n    // Generate property accessors\n    properties foreach(prop,\n        // Getter\n        code = code .. className .. \" \" .. prop .. \" := method(_\" .. prop .. \")\\n\"\n        // Setter\n        code = code .. className .. \" set\" .. prop asCapitalized .. \" := method(v, _\" .. prop .. \" = v; self)\\n\"\n    )\n    \n    code doString  // Evaluate the generated code\n    Lobby getSlot(className)  // Return the created object\n)\n\n// Use the generator\nCar := generateClass(\"Car\", list(\"make\", \"model\", \"year\"))\nmyCar := Car clone init\nmyCar setMake(\"Toyota\") setModel(\"Camry\") setYear(2020)\nmyCar make println  // Toyota\n```\n\n## Aspect-Oriented Programming\n\nImplement cross-cutting concerns:\n\n```io\n// Method wrapping for logging\nObject addLogging := method(methodName,\n    original := self getSlot(methodName)\n    \n    self setSlot(methodName, method(\n        (\"Calling \" .. methodName .. \" with args: \" .. call message arguments) println\n        result := nil\n        e := try(result = original doMessage(call message, call sender))\n        if(e,\n            (\"Error in \" .. methodName .. \": \" .. e message) println\n            e raise,\n            (\"Returned: \" .. result) println\n            result\n        )\n    ))\n)\n\nCalculator := Object clone\nCalculator add := method(a, b, a + b)\nCalculator divide := method(a, b, a / b)\n\nCalculator addLogging(\"add\")\nCalculator addLogging(\"divide\")\n\nCalculator add(5, 3)\n// Calling add with args: list(5, 3)\n// Returned: 8\n\nCalculator divide(10, 0)\n// Calling divide with args: list(10, 0)\n// Error in divide: divide by zero\n```\n\n## Macro System\n\nIo's macros transform code before evaluation:\n\n```io\n// Define a macro\nObject unless := macro(condition, action,\n    // Macros receive unevaluated arguments as messages\n    // Transform to if(condition not, action)\n    message(if) setArguments(\n        list(\n            message(not) setTarget(condition),\n            action\n        )\n    )\n)\n\n// Use the macro\nx := 5\nunless(x > 10, \"x is not greater than 10\" println)\n// x is not greater than 10\n\n// Timing macro\nObject time := macro(code,\n    // Generate timing code\n    message(do) setArguments(list(\n        message(start := Date now),\n        code,\n        message(elapsed := Date now - start),\n        message((\"Elapsed: \" .. elapsed) println),\n        message(result)\n    ))\n)\n\n// Use it\ntime(\n    sum := 0\n    for(i, 1, 1000000, sum = sum + i)\n    sum\n)\n// Elapsed: 0.234\n```\n\n## Self-Modifying Code\n\nObjects can modify their own methods:\n\n```io\nCounter := Object clone\nCounter count := 0\nCounter increment := method(\n    count = count + 1\n    \n    // Self-modify after 5 calls\n    if(count >= 5,\n        self increment = method(\n            Exception raise(\"Counter limit reached\")\n        )\n    )\n    \n    count\n)\n\nc := Counter clone\n5 repeat(i, c increment println)  // 1, 2, 3, 4, 5\nc increment  // Exception: Counter limit reached\n```\n\n## Reflection API\n\nIo provides comprehensive reflection capabilities:\n\n```io\n// Object introspection utilities\nObject describe := method(\n    (\"Type: \" .. self type) println\n    \n    \"Local Slots:\" println\n    self slotNames sort foreach(name,\n        value := self getSlot(name)\n        (\"  \" .. name .. \" = \" .. value type) println\n    )\n    \n    \"Proto chain:\" println\n    proto := self proto\n    while(proto and proto != Object,\n        (\"  -> \" .. proto type) println\n        proto = proto proto\n    )\n)\n\n// Usage\nperson := Object clone\nperson name := \"Alice\"\nperson age := 30\nperson greet := method(\"Hello!\")\n\nperson describe\n// Type: Object\n// Local Slots:\n//   age = Number\n//   greet = Block\n//   name = Sequence\n// Proto chain:\n//   -> Object\n```\n\n## DSL Creation with Metaprogramming\n\nBuild domain-specific languages:\n\n```io\n// SQL-like DSL\nTable := Object clone\nTable columns := list()\nTable rows := list()\n\nTable select := method(\n    query := SelectQuery clone\n    query table := self\n    query\n)\n\nSelectQuery := Object clone\nSelectQuery conditions := list()\n\nSelectQuery where := method(\n    // Parse conditions from arguments\n    args := call message arguments\n    args foreach(arg,\n        conditions append(arg)\n    )\n    self\n)\n\nSelectQuery execute := method(\n    table rows select(row,\n        result := true\n        conditions foreach(cond,\n            result = result and cond doInContext(row)\n        )\n        result\n    )\n)\n\n// Usage\nusers := Table clone\nusers columns = list(\"name\", \"age\", \"city\")\nusers rows = list(\n    Object clone do(name := \"Alice\"; age := 30; city := \"NYC\"),\n    Object clone do(name := \"Bob\"; age := 25; city := \"LA\"),\n    Object clone do(name := \"Charlie\"; age := 35; city := \"NYC\")\n)\n\nresults := users select where(age > 25, city == \"NYC\") execute\nresults foreach(r, (r name .. \": \" .. r age) println)\n// Alice: 30\n// Charlie: 35\n```\n\n## Performance Profiling\n\nUse metaprogramming for profiling:\n\n```io\nProfiler := Object clone\nProfiler stats := Map clone\n\nObject profile := method(methodName,\n    original := self getSlot(methodName)\n    \n    self setSlot(methodName, method(\n        start := Date now\n        result := original doMessage(call message, call sender)\n        elapsed := Date now - start\n        \n        key := self type .. \"::\" .. methodName\n        if(Profiler stats hasKey(key) not,\n            Profiler stats atPut(key, list(0, 0))\n        )\n        \n        stats := Profiler stats at(key)\n        stats atPut(0, stats at(0) + 1)      // Count\n        stats atPut(1, stats at(1) + elapsed) // Total time\n        \n        result\n    ))\n)\n\nProfiler report := method(\n    \"=== Profiling Report ===\" println\n    stats foreach(key, data,\n        avg := data at(1) / data at(0)\n        (key .. \": \" .. data at(0) .. \" calls, \" .. \n         data at(1) .. \"s total, \" .. avg .. \"s avg\") println\n    )\n)\n\n// Usage\nMath := Object clone\nMath factorial := method(n,\n    if(n \u003c= 1, 1, n * factorial(n - 1))\n)\nMath profile(\"factorial\")\n\n10 repeat(Math factorial(20))\nProfiler report\n```\n\n## Compile-Time Computation\n\nUse macros for compile-time optimization:\n\n```io\n// Macro that pre-computes constant expressions\nObject precompute := macro(expr,\n    // If expression contains only literals, evaluate now\n    result := nil\n    e := try(result = expr doInContext(Object clone))\n    \n    if(e isNil,\n        // Successfully evaluated - return literal\n        Message clone setName(result asString),\n        // Contains variables - return original\n        expr\n    )\n)\n\n// Usage\nx := 10\ny := precompute(5 * 6 + 7)  // Computed at parse time\nz := precompute(x * 2)      // Can't precompute, has variable\n\ny println  // 37 (was precomputed)\n```\n\n## Method Combination\n\nImplement method combination patterns:\n\n```io\n// Before/After/Around methods\nObject addBefore := method(methodName, beforeBlock,\n    original := self getSlot(methodName)\n    self setSlot(methodName, method(\n        beforeBlock doMessage(call message, call sender)\n        original doMessage(call message, call sender)\n    ))\n)\n\nObject addAfter := method(methodName, afterBlock,\n    original := self getSlot(methodName)\n    self setSlot(methodName, method(\n        result := original doMessage(call message, call sender)\n        afterBlock call(result)\n        result\n    ))\n)\n\nObject addAround := method(methodName, aroundBlock,\n    original := self getSlot(methodName)\n    self setSlot(methodName, method(\n        aroundBlock call(original, call message, call sender)\n    ))\n)\n\n// Usage\nBankAccount := Object clone\nBankAccount balance := 100\nBankAccount withdraw := method(amount, balance = balance - amount)\n\nBankAccount addBefore(\"withdraw\", method(amount,\n    (\"Withdrawing \" .. amount) println\n))\n\nBankAccount addAfter(\"withdraw\", method(result,\n    (\"New balance: \" .. balance) println\n))\n\nBankAccount addAround(\"withdraw\", method(original, msg, sender,\n    amount := msg argAt(0) doInContext(sender)\n    if(amount > balance,\n        Exception raise(\"Insufficient funds\"),\n        original doMessage(msg, sender)\n    )\n))\n\naccount := BankAccount clone\naccount withdraw(50)\n// Withdrawing 50\n// New balance: 50\n```\n\n## Common Pitfalls\n\n### Evaluation Context\n\n```io\n// PROBLEM: Wrong context\nmakeMethod := method(code,\n    method doString(code)  // code evaluates in method's context\n)\n\nobj := Object clone\nobj value := 10\nobj badMethod := makeMethod(\"value * 2\")\n// obj badMethod  // Error: value not found\n\n// SOLUTION: Use message objects\nmakeMethod := method(code,\n    method(code doInContext(self))\n)\n```\n\n### Performance Impact\n\n```io\n// Metaprogramming has runtime cost\ndirectCall := method(x, x * 2)\ndynamicCall := method(x,\n    msg := Message clone setName(\"*\") setArguments(list(Message clone setName(\"2\")))\n    x doMessage(msg)\n)\n\n// directCall is much faster than dynamicCall\n```\n\n## Exercises\n\n1. **Memoization Decorator**: Create a decorator that automatically memoizes any method.\n\n2. **Contract System**: Implement Design by Contract with pre/post conditions.\n\n3. **Mock Object Generator**: Build a system that generates mock objects for testing.\n\n4. **Dependency Injection**: Create a DI container using metaprogramming.\n\n5. **ORM**: Build a simple object-relational mapper that generates methods from table schemas.\n\n## Real-World Example: ActiveRecord Pattern\n\n```io\n// Simple ActiveRecord implementation\nActiveRecord := Object clone\nActiveRecord tableName := nil\nActiveRecord connection := nil  // Database connection\n\nActiveRecord findById := method(id,\n    sql := \"SELECT * FROM \" .. tableName .. \" WHERE id = \" .. id\n    row := connection execute(sql) first\n    if(row,\n        obj := self clone\n        row foreach(column, value,\n            obj setSlot(column, value)\n        )\n        obj\n    )\n)\n\nActiveRecord save := method(\n    if(hasSlot(\"id\"),\n        // Update\n        sql := \"UPDATE \" .. tableName .. \" SET \"\n        updates := list()\n        slotNames foreach(name,\n            if(name != \"id\",\n                updates append(name .. \" = '\" .. getSlot(name) .. \"'\")\n            )\n        )\n        sql = sql .. updates join(\", \") .. \" WHERE id = \" .. id\n    ,\n        // Insert\n        sql := \"INSERT INTO \" .. tableName\n        columns := list()\n        values := list()\n        slotNames foreach(name,\n            columns append(name)\n            values append(\"'\" .. getSlot(name) .. \"'\")\n        )\n        sql = sql .. \" (\" .. columns join(\", \") .. \") VALUES (\" .. values join(\", \") .. \")\"\n    )\n    \n    connection execute(sql)\n    self\n)\n\n// Generate model from table\ngenerateModel := method(name, table, columns,\n    model := ActiveRecord clone\n    model type := name\n    model tableName = table\n    \n    // Add properties\n    columns foreach(column,\n        model setSlot(column, nil)\n    )\n    \n    // Add validations\n    model validate := method(\n        // Generated validation code\n        true\n    )\n    \n    // Store in Lobby\n    Lobby setSlot(name, model)\n    model\n)\n\n// Usage\nUser := generateModel(\"User\", \"users\", list(\"id\", \"name\", \"email\", \"age\"))\n\nuser := User clone\nuser name = \"Alice\"\nuser email = \"alice@example.com\"\nuser age = 30\n// user save\n\nfoundUser := User findById(1)\n```\n\n## Conclusion\n\nMetaprogramming in Io isn't a special feature—it's a natural consequence of the language's design. When everything is an object, including code itself, manipulation becomes straightforward. Messages as first-class objects, comprehensive reflection, and runtime modification enable powerful patterns that would require complex machinery in other languages.\n\nThe key to effective metaprogramming in Io is understanding that you're not working with special metaprogramming constructs, but simply manipulating objects that happen to represent code. This uniformity makes metaprogramming accessible and powerful, though it requires careful consideration of evaluation contexts and performance implications.\n"},"../_index.json":{"ok":true,"status":200,"content":"{\n  \"title\": \"The Io Programming Language\",\n  \"topTitle\": \"Io\",\n  \"subtitle\": \"A comprehensive guide to prototype-based programming with Io.\",\n  \"content\": [\n    {\n      \"type\": \"ContentText\",\n      \"content\": \"This book provides an in-depth exploration of the Io programming language, designed for experienced programmers who want to understand prototype-based object-oriented programming. Through detailed comparisons with mainstream languages like JavaScript, Python, Ruby, and Java, readers will gain practical insights into Io's unique paradigm.\"\n    },\n    {\n      \"type\": \"ContentCards\",\n      \"title\": \"Chapters\",\n      \"columns\": 2,\n      \"items\": [\n        \"Preface\",\n        \"Introduction\",\n        \"Getting-Started\",\n        \"Everything-is-an-Object\",\n        \"Prototypes-Not-Classes\",\n        \"Messages-and-Slots\",\n        \"Cloning-and-Inheritance\",\n        \"Control-Flow\",\n        \"Collections\",\n        \"Blocks-and-Closures\",\n        \"Exceptions\",\n        \"Metaprogramming\",\n        \"Concurrency\",\n        \"Domain-Specific-Languages\",\n        \"C-Integration\",\n        \"Real-World-Patterns\",\n        \"Case-Studies\",\n        \"Ecosystem-and-Libraries\",\n        \"Conclusion\"\n      ]\n    }\n  ]\n}\n"},"../Concurrency/_index.json":{"ok":false,"status":404},"../Concurrency/_index.md":{"ok":true,"status":200,"content":"---\ntitle: Concurrency\ntopTitle: Io\nsubtitle: \"Coroutines, actors, and futures for cooperative and message-passing concurrency.\"\nnextSectionLink: true\n---\n\nIo provides powerful concurrency primitives: coroutines for cooperative multitasking, actors for message-passing concurrency, and futures for asynchronous computation. This chapter explores these mechanisms and how they enable concurrent and parallel programming in Io.\n\n## Coroutines: Cooperative Multitasking\n\nCoroutines are the foundation of Io's concurrency model. They're lightweight threads that yield control cooperatively:\n\n```io\n// Create a coroutine\ncoro := coroutine(\n    5 repeat(i,\n        (\"Coroutine: \" .. i) println\n        yield  // Give control back\n    )\n)\n\n// Run it\n5 repeat(\n    \"Main\" println\n    coro resume  // Resume the coroutine\n)\n// Output interleaves Main and Coroutine messages\n```\n\nCompare with threads in other languages:\n\n```python\n# Python with threads (preemptive)\nimport threading\ndef worker():\n    for i in range(5):\n        print(f\"Thread: {i}\")\n        # No explicit yield needed\n\n# Python with async (cooperative)\nasync def worker():\n    for i in range(5):\n        print(f\"Coroutine: {i}\")\n        await asyncio.sleep(0)  # Explicit yield\n```\n\n## Creating and Managing Coroutines\n\n```io\n// Basic coroutine creation\ncoro := Coroutine clone\ncoro setRunMessage(message(\n    \"Running in coroutine\" println\n    self  // Return value\n))\ncoro resume println  // \"Running in coroutine\", then returns self\n\n// Using @ for async execution\nfuture := obj @method(arg)  // Runs method in new coroutine\nresult := future resolve     // Wait for result\n\n// Coroutine with arguments\nproducer := coroutine(\n    10 repeat(i,\n        yield(i * i)  // Yield a value\n    )\n)\n\n5 repeat(\n    producer resume println  // 0, 1, 4, 9, 16\n)\n```\n\n## Actors: Message-Passing Concurrency\n\nActors are objects that process messages asynchronously in their own coroutine:\n\n```io\n// Create an actor\nCounter := Object clone\nCounter count := 0\nCounter increment := method(\n    count = count + 1\n    count\n)\n\n// Make it an actor\ncounter := Counter clone\ncounterActor := counter @  // @ makes it an actor\n\n// Send messages asynchronously\nfuture1 := counterActor increment\nfuture2 := counterActor increment\nfuture3 := counterActor increment\n\n// Get results\nfuture1 resolve println  // 1\nfuture2 resolve println  // 2\nfuture3 resolve println  // 3\n```\n\nThis is similar to Erlang's actor model:\n\n```erlang\n% Erlang\ncounter(Count) ->\n    receive\n        {increment, From} ->\n            From ! Count + 1,\n            counter(Count + 1)\n    end.\n```\n\n## Futures and Promises\n\nFutures represent values that will be available later:\n\n```io\n// Create a future manually\nfuture := Future clone\n\n// In another coroutine, fulfill it\n@(\n    wait(1)  // Simulate work\n    future setResult(42)\n)\n\n// Wait for result\n\"Waiting...\" println\nresult := future resolve\n(\"Got result: \" .. result) println  // Got result: 42\n\n// Futures from async calls\nslowOperation := method(n,\n    wait(n)\n    n * 2\n)\n\nf := self @slowOperation(2)\n\"Doing other work...\" println\nresult := f resolve\nresult println  // 4\n```\n\n## Channels for Communication\n\nImplement Go-style channels:\n\n```io\nChannel := Object clone\nChannel init := method(\n    self queue := list()\n    self waiters := list()\n    self\n)\n\nChannel send := method(value,\n    if(waiters size > 0,\n        waiter := waiters removeFirst\n        waiter resume(value),\n        queue append(value)\n    )\n)\n\nChannel receive := method(\n    if(queue size > 0,\n        queue removeFirst,\n        waiters append(Coroutine currentCoroutine)\n        Coroutine currentCoroutine pause\n    )\n)\n\n// Usage\nch := Channel clone init\n\n// Producer\n@(\n    5 repeat(i,\n        ch send(i * i)\n        wait(0.1)\n    )\n)\n\n// Consumer\n@(\n    5 repeat(\n        value := ch receive\n        (\"Received: \" .. value) println\n    )\n)\n\nwait(1)  // Let them run\n```\n\n## Synchronization Primitives\n\n### Mutex (Mutual Exclusion)\n\n```io\nMutex := Object clone\nMutex locked := false\nMutex waitQueue := list()\n\nMutex lock := method(\n    while(locked,\n        waitQueue append(Coroutine currentCoroutine)\n        Coroutine currentCoroutine pause\n    )\n    locked = true\n)\n\nMutex unlock := method(\n    locked = false\n    if(waitQueue size > 0,\n        waiter := waitQueue removeFirst\n        waiter resume\n    )\n)\n\nMutex synchronize := method(block,\n    lock\n    e := try(result := block call)\n    unlock\n    if(e, e raise, result)\n)\n\n// Usage\nsharedCounter := 0\nmutex := Mutex clone\n\n10 repeat(\n    @(\n        mutex synchronize(\n            temp := sharedCounter\n            yield  // Simulate race condition\n            sharedCounter = temp + 1\n        )\n    )\n)\n\nwait(0.5)\nsharedCounter println  // 10 (without mutex would be unpredictable)\n```\n\n### Semaphore\n\n```io\nSemaphore := Object clone\nSemaphore init := method(permits,\n    self permits := permits\n    self waitQueue := list()\n    self\n)\n\nSemaphore acquire := method(\n    while(permits \u003c= 0,\n        waitQueue append(Coroutine currentCoroutine)\n        Coroutine currentCoroutine pause\n    )\n    permits = permits - 1\n)\n\nSemaphore release := method(\n    permits = permits + 1\n    if(waitQueue size > 0,\n        waiter := waitQueue removeFirst\n        waiter resume\n    )\n)\n\n// Usage: Limit concurrent connections\nconnectionPool := Semaphore clone init(3)\n\n10 repeat(i,\n    @(\n        connectionPool acquire\n        (\"Connection \" .. i .. \" started\") println\n        wait(Random value)\n        (\"Connection \" .. i .. \" finished\") println\n        connectionPool release\n    )\n)\n\nwait(3)\n```\n\n## Concurrent Collections\n\n```io\n// Thread-safe list\nConcurrentList := List clone\nConcurrentList mutex := Mutex clone\n\nConcurrentList append := method(item,\n    mutex synchronize(resend(item))\n)\n\nConcurrentList at := method(index,\n    mutex synchronize(resend(index))\n)\n\nConcurrentList size := method(\n    mutex synchronize(resend)\n)\n\n// Usage\nlist := ConcurrentList clone\n\n10 repeat(i,\n    @(list append(i))\n)\n\nwait(0.1)\nlist size println  // 10\n```\n\n## Worker Pool Pattern\n\n```io\nWorkerPool := Object clone\nWorkerPool init := method(workerCount,\n    self workers := list()\n    self taskQueue := Channel clone init\n    self results := Channel clone init\n    \n    workerCount repeat(\n        worker := @(\n            loop(\n                task := taskQueue receive\n                if(task isNil, break)  // Poison pill\n                \n                result := task call\n                results send(result)\n            )\n        )\n        workers append(worker)\n    )\n    \n    self\n)\n\nWorkerPool submit := method(task,\n    taskQueue send(task)\n)\n\nWorkerPool shutdown := method(\n    workers size repeat(taskQueue send(nil))\n)\n\nWorkerPool getResult := method(\n    results receive\n)\n\n// Usage\npool := WorkerPool clone init(4)\n\n// Submit tasks\n10 repeat(i,\n    pool submit(block(\n        wait(Random value * 0.1)\n        i * i\n    ))\n)\n\n// Collect results\nresults := list()\n10 repeat(\n    results append(pool getResult)\n)\n\npool shutdown\nresults println\n```\n\n## Async/Await Pattern\n\n```io\n// Implement async/await style\nObject async := method(\n    future := Future clone\n    \n    @(\n        e := try(result := call activated doMessage(call message, call sender))\n        if(e,\n            future setException(e),\n            future setResult(result)\n        )\n    )\n    \n    future\n)\n\nObject await := method(future,\n    future resolve\n)\n\n// Usage\nfetchData := async method(url,\n    wait(1)  // Simulate network delay\n    \"Data from \" .. url\n)\n\nprocessData := async method(\n    data1 := await(fetchData(\"api/users\"))\n    data2 := await(fetchData(\"api/posts\"))\n    data1 .. \" + \" .. data2\n)\n\nresult := await(processData)\nresult println  // Data from api/users + Data from api/posts\n```\n\n## Parallel Map\n\n```io\nList parallelMap := method(block,\n    futures := self map(item,\n        self @(block call(item))\n    )\n    \n    futures map(resolve)\n)\n\n// Usage\nnumbers := list(1, 2, 3, 4, 5)\n\n// Sequential map\ntime(\n    sequential := numbers map(n,\n        wait(0.1)\n        n * n\n    )\n)\n\n// Parallel map\ntime(\n    parallel := numbers parallelMap(n,\n        wait(0.1)\n        n * n\n    )\n)\n\nsequential println  // list(1, 4, 9, 16, 25)\nparallel println    // list(1, 4, 9, 16, 25) but faster\n```\n\n## Deadlock Detection\n\n```io\nDeadlockDetector := Object clone\nDeadlockDetector init := method(\n    self resources := Map clone\n    self waitGraph := Map clone\n    self\n)\n\nDeadlockDetector requestResource := method(coroutine, resource,\n    // Add to wait graph\n    if(resources hasKey(resource),\n        owner := resources at(resource)\n        if(owner != coroutine,\n            waitGraph atPut(coroutine, resource)\n            \n            // Check for cycle\n            if(hasCycle(coroutine),\n                Exception raise(\"Deadlock detected!\")\n            )\n        )\n    )\n)\n\nDeadlockDetector hasCycle := method(start,\n    // Simplified cycle detection\n    visited := list()\n    current := start\n    \n    while(waitGraph hasKey(current),\n        if(visited contains(current), return true)\n        visited append(current)\n        \n        resource := waitGraph at(current)\n        if(resources hasKey(resource),\n            current = resources at(resource)\n        ,\n            break\n        )\n    )\n    \n    false\n)\n```\n\n## Event Loop\n\n```io\nEventLoop := Object clone\nEventLoop init := method(\n    self events := list()\n    self running := true\n    self\n)\n\nEventLoop schedule := method(delay, block,\n    events append(list(Date now + delay, block))\n    events sortInPlaceBy(block(e, e at(0)))\n)\n\nEventLoop run := method(\n    while(running and events size > 0,\n        now := Date now\n        \n        while(events size > 0 and events first at(0) \u003c= now,\n            event := events removeFirst\n            event at(1) @call\n        )\n        \n        if(events size > 0,\n            wait((events first at(0) - now) max(0))\n        )\n    )\n)\n\nEventLoop stop := method(running = false)\n\n// Usage\nloop := EventLoop clone init\n\nloop schedule(0.1, block(\"First\" println))\nloop schedule(0.2, block(\"Second\" println))\nloop schedule(0.15, block(\"Between\" println))\n\nloop run\n```\n\n## Common Patterns\n\n### Producer-Consumer\n\n```io\nBuffer := Object clone\nBuffer init := method(capacity,\n    self items := list()\n    self capacity := capacity\n    self notFull := Semaphore clone init(capacity)\n    self notEmpty := Semaphore clone init(0)\n    self mutex := Mutex clone\n    self\n)\n\nBuffer put := method(item,\n    notFull acquire\n    mutex synchronize(items append(item))\n    notEmpty release\n)\n\nBuffer get := method(\n    notEmpty acquire\n    item := mutex synchronize(items removeFirst)\n    notFull release\n    item\n)\n\n// Usage\nbuffer := Buffer clone init(5)\n\n// Producer\n@(\n    10 repeat(i,\n        (\"Producing \" .. i) println\n        buffer put(i)\n        wait(Random value * 0.1)\n    )\n)\n\n// Consumer\n@(\n    10 repeat(\n        item := buffer get\n        (\"Consumed \" .. item) println\n        wait(Random value * 0.2)\n    )\n)\n\nwait(3)\n```\n\n### Fork-Join\n\n```io\nObject forkJoin := method(tasks,\n    futures := tasks map(task,\n        @(task call)\n    )\n    \n    futures map(resolve)\n)\n\n// Parallel quicksort\nquicksort := method(list,\n    if(list size \u003c= 1, return list)\n    \n    pivot := list at(list size / 2)\n    \n    results := forkJoin(list(\n        block(list select(x, x \u003c pivot) quicksort),\n        block(list select(x, x == pivot)),\n        block(list select(x, x > pivot) quicksort)\n    ))\n    \n    results at(0) appendSeq(results at(1)) appendSeq(results at(2))\n)\n\nsorted := quicksort(list(3, 1, 4, 1, 5, 9, 2, 6))\nsorted println  // list(1, 1, 2, 3, 4, 5, 6, 9)\n```\n\n## Performance Considerations\n\n```io\n// Coroutines are lightweight\ntime(\n    coroutines := list()\n    1000 repeat(i,\n        coroutines append(@(i * i))\n    )\n    coroutines map(resolve)\n)\n\n// But context switching has overhead\nbenchmarkConcurrency := method(taskCount, taskWork,\n    // Sequential\n    seqTime := time(\n        taskCount repeat(i, taskWork call(i))\n    )\n    \n    // Concurrent\n    concTime := time(\n        futures := list()\n        taskCount repeat(i,\n            futures append(@(taskWork call(i)))\n        )\n        futures map(resolve)\n    )\n    \n    (\"Sequential: \" .. seqTime) println\n    (\"Concurrent: \" .. concTime) println\n    (\"Speedup: \" .. (seqTime / concTime)) println\n)\n\n// Light work - concurrency overhead dominates\nbenchmarkConcurrency(100, block(i, i * i))\n\n// Heavy work - concurrency helps\nbenchmarkConcurrency(10, block(i,\n    sum := 0\n    10000 repeat(j, sum = sum + j)\n    sum\n))\n```\n\n## Exercises\n\n1. **Rate Limiter**: Implement a rate limiter that allows N operations per second.\n\n2. **Parallel Reduce**: Create a parallel version of reduce that divides work among workers.\n\n3. **Actor Supervisor**: Build a supervisor that restarts failed actors.\n\n4. **CSP Channels**: Implement Communicating Sequential Processes with select statement.\n\n5. **STM**: Implement Software Transactional Memory for conflict-free concurrent updates.\n\n## Real-World Example: Web Scraper\n\n```io\nWebScraper := Object clone\nWebScraper init := method(maxConcurrent,\n    self semaphore := Semaphore clone init(maxConcurrent)\n    self visited := ConcurrentSet clone init\n    self results := ConcurrentList clone\n    self\n)\n\nWebScraper scrape := method(urls,\n    futures := list()\n    \n    urls foreach(url,\n        if(visited contains(url) not,\n            visited add(url)\n            \n            future := @(\n                semaphore acquire\n                e := try(\n                    (\"Scraping \" .. url) println\n                    // Simulate HTTP request\n                    wait(Random value)\n                    \n                    content := \"Content from \" .. url\n                    results append(Map with(\"url\", url, \"content\", content))\n                    \n                    // Find more URLs (simplified)\n                    if(Random value \u003c 0.3,\n                        newUrl := url .. \"/\" .. Random value round\n                        self scrape(list(newUrl))\n                    )\n                )\n                \n                semaphore release\n                if(e, (\"Error scraping \" .. url .. \": \" .. e message) println)\n            )\n            \n            futures append(future)\n        )\n    )\n    \n    futures map(resolve)\n    self\n)\n\n// Usage\nscraper := WebScraper clone init(3)\nscraper scrape(list(\n    \"https://example.com\",\n    \"https://example.org\",\n    \"https://example.net\"\n))\n\nwait(2)\n(\"Scraped \" .. scraper results size .. \" pages\") println\n```\n\n## Conclusion\n\nIo's concurrency model, built on coroutines, actors, and futures, provides powerful abstractions for concurrent programming. The cooperative nature of coroutines gives you fine control over scheduling, while actors provide isolation and message-passing safety. Futures enable asynchronous programming patterns familiar from other languages.\n\nThe beauty of Io's approach is that these concurrency primitives are implemented using the same object model as everything else. Coroutines are objects, messages can be sent asynchronously with `@`, and synchronization primitives can be built from basic objects and messages. This consistency makes concurrent programming in Io both powerful and comprehensible.\n"}}</script>
+</body>
+</html>

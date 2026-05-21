@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="stylesheet" href="../colvmn/style.css">
+<title>Everything is an Object – Io</title>
+  <link rel="alternate" type="text/plain" title="llms.txt" href="/llms.txt">
+  <meta name="description" content="What it really means when every value—numbers, booleans, methods—is an object.">
+</head>
+<body>
+<div class="page loaded"><div class="header"><div><h1>Everything is an Object</h1><a class="back-link" href="../index.html">&larr; The Io Programming Language</a></div><a class="brand" href="../index.html">Io</a></div><p class="intro">What it really means when every value—numbers, booleans, methods—is an object.</p><nav class="toc"><ul><li><a href="#what-is-an-object">What Is an Object?</a></li><li><a href="#numbers-are-objects">Numbers are Objects</a></li><li><a href="#strings-are-objects-and-mutable">Strings are Objects (and Mutable!)</a></li><li><a href="#booleans-are-objects">Booleans are Objects</a></li><li><a href="#nil-is-an-object">nil is an Object</a></li><li><a href="#methods-are-objects">Methods are Objects</a></li><li><a href="#control-structures-are-objects-messages">Control Structures are Objects (Messages)</a></li><li><a href="#operators-are-objects-messages">Operators are Objects (Messages)</a></li><li><a href="#lists-are-objects">Lists are Objects</a></li><li><a href="#even-the-lobby-is-an-object">Even the Lobby is an Object</a></li><li><a href="#messages-themselves-are-objects">Messages Themselves are Objects</a></li><li><a href="#the-object-hierarchy">The Object Hierarchy</a></li><li><a href="#practical-implications">Practical Implications</a></li><li><a href="#comparison-with-other-languages">Comparison with Other Languages</a></li><li><a href="#exercises">Exercises</a></li><li><a href="#philosophical-implications">Philosophical Implications</a></li><li><a href="#conclusion">Conclusion</a></li></ul></nav><div class="section"><div class="section-body"><p>"Everything is an object" is a claim made by many languages. Ruby says it. Smalltalk says it. Even Java claims it (though primitives like <code>int</code> and <code>boolean</code> break the rule). But what does it really mean? And how thoroughly does Io embrace this principle?</p><p>In this chapter, we'll explore how Io takes "everything is an object" to its logical extreme, and what this means for how you write and think about programs.</p></div></div><h2 id="what-is-an-object">What Is an Object?</h2><div class="section"><div class="section-body"><p>Before we dive into Io's object model, let's establish what we mean by "object." In most object-oriented languages, an object is:</p><ol><li>A bundle of state (data/attributes/fields)</li><li>A set of behaviors (methods/functions)</li><li>An identity (distinct from other objects)</li></ol><p>In Java, you might have:</p><pre><code>class Dog {
+    String name;        // state
+    int age;           // state
+    
+    void bark() {      // behavior
+        System.out.println("Woof!");
+    }
+}
+
+Dog fido = new Dog();  // identity (fido is distinct from other Dogs)</code></pre><p>But Java immediately breaks its own rules:</p><pre><code>int x = 5;          // Not an object!
+x.toString();       // Error: int cannot be dereferenced
+Integer y = 5;      // Now it's an object (boxed)
+y.toString();       // "5"</code></pre><p>Let's see how Io handles this.</p></div></div><h2 id="numbers-are-objects">Numbers are Objects</h2><div class="section"><div class="section-body"><p>In Io, numbers aren't primitives&mdash;they're full objects:</p><pre><code>5 type println           // Number
+5 slotNames println      // list(%, *, +, -, /, &lt;, ...)
+
+// Numbers have methods
+5 abs println            // 5
+-5 abs println           // 5
+5 sqrt println           // 2.236...
+5 sin println            // -0.958...
+
+// You can add methods to numbers!
+Number double := method(self * 2)
+5 double println         // 10
+
+// You can even inspect a number's prototype chain
+5 proto println          // Number_0x...
+5 proto proto println    // Object_0x...</code></pre><p>Compare this to Python, which claims everything is an object:</p><pre><code>x = 5
+print(type(x))           # &lt;class 'int'&gt;
+print(dir(x))            # ['__abs__', '__add__', ...]
+
+# But you can't add methods to numbers
+x.double = lambda: x * 2  # AttributeError!</code></pre><p>Python's numbers are objects, but they're <em>immutable</em> objects with a <em>fixed</em> set of methods. Io's numbers are fully modifiable objects.</p></div></div><h2 id="strings-are-objects-and-mutable">Strings are Objects (and Mutable!)</h2><div class="section"><div class="section-body"><pre><code>text := "hello"
+text type println        // Sequence
+
+// Strings have methods
+text size println        // 5
+text upper println       // HELLO
+text reverse println     // olleh
+
+// But here's where it gets interesting - strings are MUTABLE
+text atPut(0, 72)       // ASCII for 'H'
+text println            // Hello
+
+// You can add methods to strings
+Sequence shout := method(self upper .. "!!!")
+"hello" shout println   // HELLO!!!</code></pre><p>This mutability might shock programmers from languages where strings are immutable:</p><pre><code># Python - strings are immutable
+text = "hello"
+text[0] = 'H'  # TypeError: 'str' object does not support item assignment
+
+# Java - strings are immutable
+String text = "hello";
+text.charAt(0) = 'H';  // Error: cannot assign a value</code></pre></div></div><h2 id="booleans-are-objects">Booleans are Objects</h2><div class="section"><div class="section-body"><p>Even <code>true</code> and <code>false</code> are objects:</p><pre><code>true type println        // true
+false type println       // false
+
+// They have methods
+true and(false) println  // false
+true or(false) println   // true
+true not println         // false
+
+// The actual objects
+true println             // true
+true proto println       // Object_0x...
+
+// You can even add methods to booleans!
+true celebrate := method("Yay!" println)
+(5 &gt; 3) celebrate       // Yay!</code></pre><p>This is different from most languages where booleans are either primitives or special immutable objects.</p></div></div><h2 id="nil-is-an-object">nil is an Object</h2><div class="section"><div class="section-body"><p>Even nothingness is an object in Io:</p><pre><code>nil type println         // Object
+nil slotNames println    // list(type, ...)
+
+// nil has methods!
+nil isNil println        // true
+nil not println          // true
+
+// You can add methods to nil
+nil greet := method("Hello from nothing!" println)
+x := nil
+x greet                  // Hello from nothing!</code></pre><p>Compare with JavaScript's confusing null:</p><pre><code>typeof null          // "object" (but it's not really)
+null.toString()      // TypeError: Cannot read property 'toString' of null</code></pre></div></div><h2 id="methods-are-objects">Methods are Objects</h2><div class="section"><div class="section-body"><p>This is where things get really interesting. Methods themselves are objects:</p><pre><code>add := method(a, b, a + b)
+add type println         // Block
+
+// Methods have methods!
+add argumentNames println // list(a, b)
+add code println         // a +(b)
+
+// You can modify methods
+add code println                    // a +(b)
+add setCode(block(a, b, a * b))   // Change implementation!
+add(3, 4) println                  // 12 (now multiplies!)
+
+// You can create methods from strings
+code := "a + b + 100"
+newMethod := block(a, b) setCode(code)
+newMethod call(5, 10) println      // 115</code></pre><p>This is far more powerful than most languages' function objects:</p><pre><code># Python
+def add(a, b):
+    return a + b
+
+print(type(add))         # &lt;class 'function'&gt;
+print(add.__code__)      # &lt;code object...&gt;
+# But you can't easily modify the function's code at runtime</code></pre></div></div><h2 id="control-structures-are-objects-messages">Control Structures are Objects (Messages)</h2><div class="section"><div class="section-body"><p>This might be the most mind-bending: <code>if</code>, <code>while</code>, and <code>for</code> aren't syntax&mdash;they're methods:</p><pre><code>// 'if' is a method on Object
+if type println          // nil (it's a method)
+
+// You can see its implementation
+Object getSlot("if") println  // method(...)
+
+// You can even redefine it!
+Object if := method(condition, trueBlock, falseBlock,
+    "Making a decision..." println
+    if(condition, trueBlock call, falseBlock call)
+)
+
+if(true, "yes" println, "no" println)
+// Prints: Making a decision...
+// Prints: yes</code></pre><p>Let's create our own control structure:</p><pre><code>Object unless := method(condition, block,
+    if(condition not, block call)
+)
+
+unless(5 &gt; 10,
+    "Math still works!" println
+)
+// Prints: Math still works!</code></pre><p>Try doing that in Java or C++!</p></div></div><h2 id="operators-are-objects-messages">Operators are Objects (Messages)</h2><div class="section"><div class="section-body"><p>Operators aren't special syntax&mdash;they're messages:</p><pre><code>// These are equivalent
+2 + 3
+2 +(3)
+2 send("+", 3)
+
+// You can redefine operators
+Number + := method(n,
+    "Adding #{self} and #{n}" interpolate println
+    self + n  // Would cause infinite recursion!
+)
+
+// Let's be more careful
+Number plusWithLogging := Number getSlot("+")
+Number + := method(n,
+    "Adding #{self} and #{n}" interpolate println
+    self plusWithLogging(n)
+)
+
+2 + 3
+// Prints: Adding 2 and 3
+// Returns: 5</code></pre><p>You can even create new operators:</p><pre><code>OperatorTable addOperator("**", 3)  // Right-associative, precedence 3
+Number ** := method(n, self pow(n))
+
+2 ** 3 println  // 8
+2 ** 3 ** 2 println  // 512 (right-associative: 2 ** (3 ** 2))</code></pre></div></div><h2 id="lists-are-objects">Lists are Objects</h2><div class="section"><div class="section-body"><pre><code>nums := list(1, 2, 3)
+nums type println        // List
+
+// Lists have many methods
+nums size println        // 3
+nums first println       // 1
+nums last println        // 3
+nums reverse println     // list(3, 2, 1)
+
+// Lists are mutable
+nums append(4)
+nums println            // list(1, 2, 3, 4)
+
+// You can add custom methods to lists
+List sum := method(
+    self reduce(+)
+)
+
+list(1, 2, 3, 4, 5) sum println  // 15</code></pre></div></div><h2 id="even-the-lobby-is-an-object">Even the Lobby is an Object</h2><div class="section"><div class="section-body"><p>The global namespace in Io is an object called <code>Lobby</code>:</p><pre><code>Lobby type println       // Object
+Lobby slotNames println  // list(all your global variables)
+
+// When you create a "global" variable, you're adding a slot to Lobby
+x := 10
+Lobby hasSlot("x") println  // true
+Lobby x println             // 10
+
+// You can manipulate the global namespace as an object
+Lobby removeSlot("x")
+x println                   // Exception: Slot x not found</code></pre><p>This is radically different from languages with special global scope rules.</p></div></div><h2 id="messages-themselves-are-objects">Messages Themselves are Objects</h2><div class="section"><div class="section-body"><p>When you send a message, that message is an object:</p><pre><code>msg := message(2 + 3)
+msg type println         // Message
+msg name println         // +
+msg arguments println    // list(Message_0x...)
+msg arguments first code println  // 3
+
+// You can evaluate messages
+msg doInContext(Lobby) println   // 5
+
+// You can build messages programmatically
+msg := Message clone setName("+") setArguments(list(Message clone setName("3")))
+2 doMessage(msg) println          // 5</code></pre><p>This is the foundation of Io's metaprogramming capabilities.</p></div></div><h2 id="the-object-hierarchy">The Object Hierarchy</h2><div class="section"><div class="section-body"><p>Let's explore how all these objects relate:</p><pre><code>// Everything ultimately inherits from Object
+5 proto proto == Object println      // true
+"hi" proto proto == Object println   // true
+true proto == Object println         // true
+list() proto proto == Object println // true
+
+// You can walk the prototype chain
+obj := 5
+while(obj,
+    obj type println
+    obj = obj proto
+)
+// Prints:
+// Number
+// Object</code></pre></div></div><h2 id="practical-implications">Practical Implications</h2><div class="section"><div class="section-body"><p>What does it mean that everything is truly an object?</p><h3 id="1-uniform-interface">1. Uniform Interface</h3><p>You can treat everything uniformly:</p><pre><code>things := list(5, "hello", true, nil, method(x, x * 2), list(1, 2))
+
+things foreach(thing,
+    ("Type: " .. thing type) println
+)
+// Type: Number
+// Type: Sequence  
+// Type: true
+// Type: Object
+// Type: Block
+// Type: List</code></pre><h3 id="2-no-special-cases">2. No Special Cases</h3><p>You don't need to remember different rules for different types:</p><pre><code>// Everything can receive messages
+5 println
+"hello" println
+true println
+nil println
+list(1,2,3) println
+
+// Everything can be inspected
+5 slotNames
+"hello" slotNames
+true slotNames
+nil slotNames</code></pre><h3 id="3-extensibility">3. Extensibility</h3><p>You can extend anything:</p><pre><code>// Add methods to numbers for DSL
+Number days := method(
+    Duration clone setDays(self)
+)
+
+Number hours := method(
+    Duration clone setHours(self)
+)
+
+// Now you can write
+deadline := Date now + 3 days + 4 hours</code></pre><h3 id="4-debugging-power">4. Debugging Power</h3><p>Since everything is an object, you can inspect everything:</p><pre><code>Object debugMethod := method(name,
+    m := self getSlot(name)
+    ("Method " .. name .. ":") println
+    ("  Arguments: " .. m argumentNames) println
+    ("  Code: " .. m code) println
+)
+
+List debugMethod("append")
+// Method append:
+//   Arguments: list(...)
+//   Code: ...</code></pre></div></div><h2 id="comparison-with-other-languages">Comparison with Other Languages</h2><div class="section"><div class="section-body"><h3 id="ruby-everything-is-an-object-mostly">Ruby: "Everything is an object" (mostly)</h3><pre><code>5.class          # Integer
+"hello".class    # String
+true.class       # TrueClass
+nil.class        # NilClass
+
+# But...
+if.class         # SyntaxError! 'if' isn't an object</code></pre><h3 id="python-everything-is-an-object-sort-of">Python: "Everything is an object" (sort of)</h3><pre><code>type(5)          # &lt;class 'int'&gt;
+type("hello")    # &lt;class 'str'&gt;
+type(True)       # &lt;class 'bool'&gt;
+type(None)       # &lt;class 'NoneType'&gt;
+
+# But...
+type(if)         # SyntaxError! 'if' isn't an object
+type(+)          # SyntaxError! '+' isn't an object</code></pre><h3 id="javascript-everything-is-an-object-except-when-its-not">JavaScript: "Everything is an object" (except when it's not)</h3><pre><code>typeof 5         // "number" (primitive)
+typeof "hello"   // "string" (primitive)
+typeof true      // "boolean" (primitive)
+typeof {}        // "object"
+
+// Autoboxing happens sometimes
+(5).toString()   // "5" (temporarily boxed)
+5.x = 10         // Silently fails!</code></pre><h3 id="io-everything-is-an-object-no-exceptions">Io: Everything IS an object (no exceptions)</h3><pre><code>5 type           // Number (object)
+"hello" type     // Sequence (object)
+true type        // true (object)
+if type          // nil (it's a method, which is an object)
++ type           // nil (it's a method, which is an object)</code></pre></div></div><h2 id="exercises">Exercises</h2><div class="section"><div class="section-body"><ol><li><strong>Object Inspector</strong>: Write a method <code>inspect</code> that can be called on any object and prints:<ul><li>Its type</li><li>Its slot names</li><li>Its prototype chain</li></ul></li><li><strong>Custom Boolean</strong>: Create your own boolean system with objects <code>Yes</code> and <code>No</code> that have methods <code>and</code>, <code>or</code>, and <code>not</code>.</li><li><strong>Operator Overloading</strong>: Define a <code>Vector</code> object with <code>x</code> and <code>y</code> slots, then overload the <code>+</code> operator to add vectors.</li><li><strong>Control Structure</strong>: Create a <code>repeat(n, block)</code> control structure that executes a block n times.</li><li><strong>Message Logger</strong>: Modify the <code>Object</code> prototype to log every message sent to any object (hint: override <code>forward</code>).</li></ol></div></div><h2 id="philosophical-implications">Philosophical Implications</h2><div class="section"><div class="section-body"><p>Io's radical "everything is an object" approach has profound implications:</p><ol><li><strong>Simplicity through uniformity</strong>: One concept (objects) explains everything</li><li><strong>Power through openness</strong>: Nothing is sealed or special</li><li><strong>Learning through exploration</strong>: You can inspect and understand everything</li><li><strong>Danger through freedom</strong>: You can break everything</li></ol><p>This last point is important. With great power comes great responsibility. Io trusts you completely. You can redefine addition, break the <code>if</code> statement, or delete critical system objects. This isn't a bug&mdash;it's a philosophy.</p></div></div><h2 id="conclusion">Conclusion</h2><div class="section"><div class="section-body"><p>In Io, "everything is an object" isn't marketing&mdash;it's a fundamental truth that shapes every aspect of the language. Numbers, strings, booleans, nil, methods, operators, control structures, and even messages themselves are all objects with slots that can be inspected, modified, and extended.</p><p>This uniformity eliminates special cases, enables powerful metaprogramming, and provides a conceptually simple (if initially mind-bending) programming model. Once you internalize that <em>everything</em> is just objects sending messages to other objects, Io's entire design clicks into place.</p><p>Next, we'll explore how objects relate to each other through Io's prototype-based inheritance system&mdash;a world without classes.</p></div></div><div class="page-footer"><a class="next-link" href="../Prototypes-Not-Classes/index.html">Prototypes, Not Classes &rarr;</a></div></div>
+<script src="../colvmn/layout/bundle.js" defer></script>
+  <script type="application/json" id="colvmn-prefetch">{"./_index.json":{"ok":false,"status":404},"./_index.md":{"ok":true,"status":200,"content":"---\ntitle: Everything is an Object\ntopTitle: Io\nsubtitle: \"What it really means when every value—numbers, booleans, methods—is an object.\"\nnextSectionLink: true\n---\n\n\"Everything is an object\" is a claim made by many languages. Ruby says it. Smalltalk says it. Even Java claims it (though primitives like `int` and `boolean` break the rule). But what does it really mean? And how thoroughly does Io embrace this principle?\n\nIn this chapter, we'll explore how Io takes \"everything is an object\" to its logical extreme, and what this means for how you write and think about programs.\n\n## What Is an Object?\n\nBefore we dive into Io's object model, let's establish what we mean by \"object.\" In most object-oriented languages, an object is:\n\n1. A bundle of state (data/attributes/fields)\n2. A set of behaviors (methods/functions)\n3. An identity (distinct from other objects)\n\nIn Java, you might have:\n\n```java\nclass Dog {\n    String name;        // state\n    int age;           // state\n    \n    void bark() {      // behavior\n        System.out.println(\"Woof!\");\n    }\n}\n\nDog fido = new Dog();  // identity (fido is distinct from other Dogs)\n```\n\nBut Java immediately breaks its own rules:\n\n```java\nint x = 5;          // Not an object!\nx.toString();       // Error: int cannot be dereferenced\nInteger y = 5;      // Now it's an object (boxed)\ny.toString();       // \"5\"\n```\n\nLet's see how Io handles this.\n\n## Numbers are Objects\n\nIn Io, numbers aren't primitives—they're full objects:\n\n```io\n5 type println           // Number\n5 slotNames println      // list(%, *, +, -, /, \u003c, ...)\n\n// Numbers have methods\n5 abs println            // 5\n-5 abs println           // 5\n5 sqrt println           // 2.236...\n5 sin println            // -0.958...\n\n// You can add methods to numbers!\nNumber double := method(self * 2)\n5 double println         // 10\n\n// You can even inspect a number's prototype chain\n5 proto println          // Number_0x...\n5 proto proto println    // Object_0x...\n```\n\nCompare this to Python, which claims everything is an object:\n\n```python\nx = 5\nprint(type(x))           # \u003cclass 'int'>\nprint(dir(x))            # ['__abs__', '__add__', ...]\n\n# But you can't add methods to numbers\nx.double = lambda: x * 2  # AttributeError!\n```\n\nPython's numbers are objects, but they're *immutable* objects with a *fixed* set of methods. Io's numbers are fully modifiable objects.\n\n## Strings are Objects (and Mutable!)\n\n```io\ntext := \"hello\"\ntext type println        // Sequence\n\n// Strings have methods\ntext size println        // 5\ntext upper println       // HELLO\ntext reverse println     // olleh\n\n// But here's where it gets interesting - strings are MUTABLE\ntext atPut(0, 72)       // ASCII for 'H'\ntext println            // Hello\n\n// You can add methods to strings\nSequence shout := method(self upper .. \"!!!\")\n\"hello\" shout println   // HELLO!!!\n```\n\nThis mutability might shock programmers from languages where strings are immutable:\n\n```python\n# Python - strings are immutable\ntext = \"hello\"\ntext[0] = 'H'  # TypeError: 'str' object does not support item assignment\n\n# Java - strings are immutable\nString text = \"hello\";\ntext.charAt(0) = 'H';  // Error: cannot assign a value\n```\n\n## Booleans are Objects\n\nEven `true` and `false` are objects:\n\n```io\ntrue type println        // true\nfalse type println       // false\n\n// They have methods\ntrue and(false) println  // false\ntrue or(false) println   // true\ntrue not println         // false\n\n// The actual objects\ntrue println             // true\ntrue proto println       // Object_0x...\n\n// You can even add methods to booleans!\ntrue celebrate := method(\"Yay!\" println)\n(5 > 3) celebrate       // Yay!\n```\n\nThis is different from most languages where booleans are either primitives or special immutable objects.\n\n## nil is an Object\n\nEven nothingness is an object in Io:\n\n```io\nnil type println         // Object\nnil slotNames println    // list(type, ...)\n\n// nil has methods!\nnil isNil println        // true\nnil not println          // true\n\n// You can add methods to nil\nnil greet := method(\"Hello from nothing!\" println)\nx := nil\nx greet                  // Hello from nothing!\n```\n\nCompare with JavaScript's confusing null:\n\n```javascript\ntypeof null          // \"object\" (but it's not really)\nnull.toString()      // TypeError: Cannot read property 'toString' of null\n```\n\n## Methods are Objects\n\nThis is where things get really interesting. Methods themselves are objects:\n\n```io\nadd := method(a, b, a + b)\nadd type println         // Block\n\n// Methods have methods!\nadd argumentNames println // list(a, b)\nadd code println         // a +(b)\n\n// You can modify methods\nadd code println                    // a +(b)\nadd setCode(block(a, b, a * b))   // Change implementation!\nadd(3, 4) println                  // 12 (now multiplies!)\n\n// You can create methods from strings\ncode := \"a + b + 100\"\nnewMethod := block(a, b) setCode(code)\nnewMethod call(5, 10) println      // 115\n```\n\nThis is far more powerful than most languages' function objects:\n\n```python\n# Python\ndef add(a, b):\n    return a + b\n\nprint(type(add))         # \u003cclass 'function'>\nprint(add.__code__)      # \u003ccode object...>\n# But you can't easily modify the function's code at runtime\n```\n\n## Control Structures are Objects (Messages)\n\nThis might be the most mind-bending: `if`, `while`, and `for` aren't syntax—they're methods:\n\n```io\n// 'if' is a method on Object\nif type println          // nil (it's a method)\n\n// You can see its implementation\nObject getSlot(\"if\") println  // method(...)\n\n// You can even redefine it!\nObject if := method(condition, trueBlock, falseBlock,\n    \"Making a decision...\" println\n    if(condition, trueBlock call, falseBlock call)\n)\n\nif(true, \"yes\" println, \"no\" println)\n// Prints: Making a decision...\n// Prints: yes\n```\n\nLet's create our own control structure:\n\n```io\nObject unless := method(condition, block,\n    if(condition not, block call)\n)\n\nunless(5 > 10,\n    \"Math still works!\" println\n)\n// Prints: Math still works!\n```\n\nTry doing that in Java or C++!\n\n## Operators are Objects (Messages)\n\nOperators aren't special syntax—they're messages:\n\n```io\n// These are equivalent\n2 + 3\n2 +(3)\n2 send(\"+\", 3)\n\n// You can redefine operators\nNumber + := method(n,\n    \"Adding #{self} and #{n}\" interpolate println\n    self + n  // Would cause infinite recursion!\n)\n\n// Let's be more careful\nNumber plusWithLogging := Number getSlot(\"+\")\nNumber + := method(n,\n    \"Adding #{self} and #{n}\" interpolate println\n    self plusWithLogging(n)\n)\n\n2 + 3\n// Prints: Adding 2 and 3\n// Returns: 5\n```\n\nYou can even create new operators:\n\n```io\nOperatorTable addOperator(\"**\", 3)  // Right-associative, precedence 3\nNumber ** := method(n, self pow(n))\n\n2 ** 3 println  // 8\n2 ** 3 ** 2 println  // 512 (right-associative: 2 ** (3 ** 2))\n```\n\n## Lists are Objects\n\n```io\nnums := list(1, 2, 3)\nnums type println        // List\n\n// Lists have many methods\nnums size println        // 3\nnums first println       // 1\nnums last println        // 3\nnums reverse println     // list(3, 2, 1)\n\n// Lists are mutable\nnums append(4)\nnums println            // list(1, 2, 3, 4)\n\n// You can add custom methods to lists\nList sum := method(\n    self reduce(+)\n)\n\nlist(1, 2, 3, 4, 5) sum println  // 15\n```\n\n## Even the Lobby is an Object\n\nThe global namespace in Io is an object called `Lobby`:\n\n```io\nLobby type println       // Object\nLobby slotNames println  // list(all your global variables)\n\n// When you create a \"global\" variable, you're adding a slot to Lobby\nx := 10\nLobby hasSlot(\"x\") println  // true\nLobby x println             // 10\n\n// You can manipulate the global namespace as an object\nLobby removeSlot(\"x\")\nx println                   // Exception: Slot x not found\n```\n\nThis is radically different from languages with special global scope rules.\n\n## Messages Themselves are Objects\n\nWhen you send a message, that message is an object:\n\n```io\nmsg := message(2 + 3)\nmsg type println         // Message\nmsg name println         // +\nmsg arguments println    // list(Message_0x...)\nmsg arguments first code println  // 3\n\n// You can evaluate messages\nmsg doInContext(Lobby) println   // 5\n\n// You can build messages programmatically\nmsg := Message clone setName(\"+\") setArguments(list(Message clone setName(\"3\")))\n2 doMessage(msg) println          // 5\n```\n\nThis is the foundation of Io's metaprogramming capabilities.\n\n## The Object Hierarchy\n\nLet's explore how all these objects relate:\n\n```io\n// Everything ultimately inherits from Object\n5 proto proto == Object println      // true\n\"hi\" proto proto == Object println   // true\ntrue proto == Object println         // true\nlist() proto proto == Object println // true\n\n// You can walk the prototype chain\nobj := 5\nwhile(obj,\n    obj type println\n    obj = obj proto\n)\n// Prints:\n// Number\n// Object\n```\n\n## Practical Implications\n\nWhat does it mean that everything is truly an object?\n\n### 1. Uniform Interface\n\nYou can treat everything uniformly:\n\n```io\nthings := list(5, \"hello\", true, nil, method(x, x * 2), list(1, 2))\n\nthings foreach(thing,\n    (\"Type: \" .. thing type) println\n)\n// Type: Number\n// Type: Sequence  \n// Type: true\n// Type: Object\n// Type: Block\n// Type: List\n```\n\n### 2. No Special Cases\n\nYou don't need to remember different rules for different types:\n\n```io\n// Everything can receive messages\n5 println\n\"hello\" println\ntrue println\nnil println\nlist(1,2,3) println\n\n// Everything can be inspected\n5 slotNames\n\"hello\" slotNames\ntrue slotNames\nnil slotNames\n```\n\n### 3. Extensibility\n\nYou can extend anything:\n\n```io\n// Add methods to numbers for DSL\nNumber days := method(\n    Duration clone setDays(self)\n)\n\nNumber hours := method(\n    Duration clone setHours(self)\n)\n\n// Now you can write\ndeadline := Date now + 3 days + 4 hours\n```\n\n### 4. Debugging Power\n\nSince everything is an object, you can inspect everything:\n\n```io\nObject debugMethod := method(name,\n    m := self getSlot(name)\n    (\"Method \" .. name .. \":\") println\n    (\"  Arguments: \" .. m argumentNames) println\n    (\"  Code: \" .. m code) println\n)\n\nList debugMethod(\"append\")\n// Method append:\n//   Arguments: list(...)\n//   Code: ...\n```\n\n## Comparison with Other Languages\n\n### Ruby: \"Everything is an object\" (mostly)\n\n```ruby\n5.class          # Integer\n\"hello\".class    # String\ntrue.class       # TrueClass\nnil.class        # NilClass\n\n# But...\nif.class         # SyntaxError! 'if' isn't an object\n```\n\n### Python: \"Everything is an object\" (sort of)\n\n```python\ntype(5)          # \u003cclass 'int'>\ntype(\"hello\")    # \u003cclass 'str'>\ntype(True)       # \u003cclass 'bool'>\ntype(None)       # \u003cclass 'NoneType'>\n\n# But...\ntype(if)         # SyntaxError! 'if' isn't an object\ntype(+)          # SyntaxError! '+' isn't an object\n```\n\n### JavaScript: \"Everything is an object\" (except when it's not)\n\n```javascript\ntypeof 5         // \"number\" (primitive)\ntypeof \"hello\"   // \"string\" (primitive)\ntypeof true      // \"boolean\" (primitive)\ntypeof {}        // \"object\"\n\n// Autoboxing happens sometimes\n(5).toString()   // \"5\" (temporarily boxed)\n5.x = 10         // Silently fails!\n```\n\n### Io: Everything IS an object (no exceptions)\n\n```io\n5 type           // Number (object)\n\"hello\" type     // Sequence (object)\ntrue type        // true (object)\nif type          // nil (it's a method, which is an object)\n+ type           // nil (it's a method, which is an object)\n```\n\n## Exercises\n\n1. **Object Inspector**: Write a method `inspect` that can be called on any object and prints:\n   - Its type\n   - Its slot names\n   - Its prototype chain\n\n2. **Custom Boolean**: Create your own boolean system with objects `Yes` and `No` that have methods `and`, `or`, and `not`.\n\n3. **Operator Overloading**: Define a `Vector` object with `x` and `y` slots, then overload the `+` operator to add vectors.\n\n4. **Control Structure**: Create a `repeat(n, block)` control structure that executes a block n times.\n\n5. **Message Logger**: Modify the `Object` prototype to log every message sent to any object (hint: override `forward`).\n\n## Philosophical Implications\n\nIo's radical \"everything is an object\" approach has profound implications:\n\n1. **Simplicity through uniformity**: One concept (objects) explains everything\n2. **Power through openness**: Nothing is sealed or special\n3. **Learning through exploration**: You can inspect and understand everything\n4. **Danger through freedom**: You can break everything\n\nThis last point is important. With great power comes great responsibility. Io trusts you completely. You can redefine addition, break the `if` statement, or delete critical system objects. This isn't a bug—it's a philosophy.\n\n## Conclusion\n\nIn Io, \"everything is an object\" isn't marketing—it's a fundamental truth that shapes every aspect of the language. Numbers, strings, booleans, nil, methods, operators, control structures, and even messages themselves are all objects with slots that can be inspected, modified, and extended.\n\nThis uniformity eliminates special cases, enables powerful metaprogramming, and provides a conceptually simple (if initially mind-bending) programming model. Once you internalize that *everything* is just objects sending messages to other objects, Io's entire design clicks into place.\n\nNext, we'll explore how objects relate to each other through Io's prototype-based inheritance system—a world without classes.\n"},"../_index.json":{"ok":true,"status":200,"content":"{\n  \"title\": \"The Io Programming Language\",\n  \"topTitle\": \"Io\",\n  \"subtitle\": \"A comprehensive guide to prototype-based programming with Io.\",\n  \"content\": [\n    {\n      \"type\": \"ContentText\",\n      \"content\": \"This book provides an in-depth exploration of the Io programming language, designed for experienced programmers who want to understand prototype-based object-oriented programming. Through detailed comparisons with mainstream languages like JavaScript, Python, Ruby, and Java, readers will gain practical insights into Io's unique paradigm.\"\n    },\n    {\n      \"type\": \"ContentCards\",\n      \"title\": \"Chapters\",\n      \"columns\": 2,\n      \"items\": [\n        \"Preface\",\n        \"Introduction\",\n        \"Getting-Started\",\n        \"Everything-is-an-Object\",\n        \"Prototypes-Not-Classes\",\n        \"Messages-and-Slots\",\n        \"Cloning-and-Inheritance\",\n        \"Control-Flow\",\n        \"Collections\",\n        \"Blocks-and-Closures\",\n        \"Exceptions\",\n        \"Metaprogramming\",\n        \"Concurrency\",\n        \"Domain-Specific-Languages\",\n        \"C-Integration\",\n        \"Real-World-Patterns\",\n        \"Case-Studies\",\n        \"Ecosystem-and-Libraries\",\n        \"Conclusion\"\n      ]\n    }\n  ]\n}\n"},"../Prototypes-Not-Classes/_index.json":{"ok":false,"status":404},"../Prototypes-Not-Classes/_index.md":{"ok":true,"status":200,"content":"---\ntitle: Prototypes, Not Classes\ntopTitle: Io\nsubtitle: \"How Io replaces classes and instances with a single uniform notion of object.\"\nnextSectionLink: true\n---\n\nMost object-oriented languages use classes as templates or blueprints for creating objects. You define a class, then instantiate objects from it. There's a fundamental distinction between the template (class) and the things created from it (instances).\n\nIo takes a different approach: prototype-based inheritance. There are no classes, only objects. New objects are created by cloning existing objects, and objects can serve as prototypes for other objects. This might seem like a small change, but it fundamentally alters how you think about and structure programs.\n\n## The Class-Based World\n\nLet's start with what you probably know. In a class-based language like Java:\n\n```java\n// Define a class (template)\nclass Animal {\n    String name;\n    \n    void speak() {\n        System.out.println(\"Some sound\");\n    }\n}\n\n// Define a subclass\nclass Dog extends Animal {\n    void speak() {\n        System.out.println(\"Woof!\");\n    }\n}\n\n// Create instances\nDog fido = new Dog();\nDog rover = new Dog();\n```\n\nThe key points:\n- `Animal` and `Dog` are classes (templates)\n- `fido` and `rover` are instances (objects)\n- Classes and instances are fundamentally different things\n- Inheritance happens between classes\n\n## The Prototype-Based World\n\nIn Io, there are no classes:\n\n```io\n// Create an object to serve as a prototype\nAnimal := Object clone\nAnimal speak := method(\"Some sound\" println)\n\n// Create another object using Animal as a prototype\nDog := Animal clone\nDog speak := method(\"Woof!\" println)\n\n// Create more objects using Dog as a prototype\nfido := Dog clone\nrover := Dog clone\n```\n\nThe key differences:\n- `Animal`, `Dog`, `fido`, and `rover` are all objects\n- No fundamental distinction between \"classes\" and \"instances\"\n- Objects are created by cloning other objects\n- Any object can serve as a prototype for other objects\n\n## Understanding Cloning\n\nWhen you clone an object in Io, you don't copy all its slots. Instead, you create a new, empty object that maintains a reference to its prototype:\n\n```io\nAnimal := Object clone\nAnimal name := \"Generic Animal\"\nAnimal speak := method(name println)\n\ndog := Animal clone\n\n// dog doesn't have its own 'name' slot\ndog hasLocalSlot(\"name\") println    // false\n\n// But it can access 'name' through its prototype\ndog name println                     // \"Generic Animal\"\n\n// Now give dog its own name\ndog name = \"Fido\"\ndog hasLocalSlot(\"name\") println    // true\ndog name println                     // \"Fido\"\n\n// Animal's name is unchanged\nAnimal name println                  // \"Generic Animal\"\n```\n\nThis is called **differential inheritance**—objects only store their differences from their prototypes.\n\n## The Prototype Chain\n\nWhen you send a message to an object, Io looks for a matching slot:\n1. First in the object itself\n2. Then in its prototype\n3. Then in the prototype's prototype\n4. And so on until it reaches Object\n\n```io\n// Create a chain of prototypes\nOrganism := Object clone\nOrganism live := method(\"Living...\" println)\n\nAnimal := Organism clone\nAnimal move := method(\"Moving...\" println)\n\nDog := Animal clone\nDog bark := method(\"Woof!\" println)\n\nfido := Dog clone\nfido name := \"Fido\"\n\n// fido can access methods from anywhere in the chain\nfido live    // \"Living...\" (from Organism)\nfido move    // \"Moving...\" (from Animal)\nfido bark    // \"Woof!\" (from Dog)\n\n// You can inspect the chain\nfido proto == Dog println           // true\nfido proto proto == Animal println  // true\nfido proto proto proto == Organism println  // true\n```\n\n## Dynamic Prototype Modification\n\nSince prototypes are just objects, you can modify them at runtime, and all objects using that prototype see the changes:\n\n```io\nDog := Object clone\nfido := Dog clone\nrover := Dog clone\n\n// Add a method to Dog\nDog bark := method(\"Woof!\" println)\n\n// Both fido and rover can now bark\nfido bark    // \"Woof!\"\nrover bark   // \"Woof!\"\n\n// Modify the method\nDog bark = method(\"WOOF! WOOF!\" println)\n\n// The change affects all dogs\nfido bark    // \"WOOF! WOOF!\"\nrover bark   // \"WOOF! WOOF!\"\n```\n\nTry doing that with classes in Java! You'd need complex reflection APIs, and even then, you couldn't modify existing instances.\n\n## Multiple Prototypes\n\nIo supports multiple inheritance through its `Protos` list:\n\n```io\n// Create two prototypes\nFlyable := Object clone\nFlyable fly := method(\"Flying...\" println)\n\nSwimmable := Object clone\nSwimmable swim := method(\"Swimming...\" println)\n\n// Create an object with multiple prototypes\nDuck := Object clone\nDuck appendProto(Flyable)\nDuck appendProto(Swimmable)\n\nmallard := Duck clone\nmallard fly     // \"Flying...\"\nmallard swim    // \"Swimming...\"\n\n// Inspect the prototype list\nDuck protos println  // list(Object_0x..., Flyable_0x..., Swimmable_0x...)\n```\n\nThe search order for slots is depth-first through the `Protos` list.\n\n## Comparing Approaches: Class vs Prototype\n\nLet's implement the same concept in both paradigms to see the differences.\n\n### Class-Based (Python)\n\n```python\nclass Shape:\n    def __init__(self):\n        self.x = 0\n        self.y = 0\n    \n    def move(self, dx, dy):\n        self.x += dx\n        self.y += dy\n\nclass Circle(Shape):\n    def __init__(self, radius):\n        super().__init__()\n        self.radius = radius\n    \n    def area(self):\n        return 3.14159 * self.radius ** 2\n\n# Usage\ncircle = Circle(5)\ncircle.move(10, 20)\nprint(circle.area())\n\n# Can't easily create a one-off variation\n# Would need to define a new class\n```\n\n### Prototype-Based (Io)\n\n```io\nShape := Object clone\nShape x := 0\nShape y := 0\nShape move := method(dx, dy,\n    x = x + dx\n    y = y + dy\n)\n\nCircle := Shape clone\nCircle radius := 0\nCircle area := method(\n    3.14159 * radius * radius\n)\n\n// Usage\ncircle := Circle clone\ncircle radius = 5\ncircle move(10, 20)\ncircle area println\n\n// Easy to create one-off variations\nspecialCircle := Circle clone\nspecialCircle area = method(\n    \"Special area: \" print\n    resend  // Call the original method\n)\nspecialCircle area  // \"Special area: 78.53975\"\n```\n\n## The Power of Prototypes\n\n### 1. Objects as Classes\n\nIn Io, objects can act as classes when needed:\n\n```io\n// Person acts like a class\nPerson := Object clone\nPerson init := method(\n    self name := \"Unknown\"\n    self age := 0\n    self\n)\n\nPerson create := method(n, a,\n    clone init name = n age = a\n)\n\n// Usage feels class-like\nalice := Person create(\"Alice\", 30)\nbob := Person create(\"Bob\", 25)\n```\n\n### 2. One-Off Objects\n\nYou can create unique objects without defining a \"class\":\n\n```io\n// Create a unique object with no \"class\"\nsingleton := Object clone\nsingleton data := Map clone\nsingleton store := method(key, value,\n    data atPut(key, value)\n)\nsingleton retrieve := method(key,\n    data at(key)\n)\n\n// Use it directly\nsingleton store(\"user\", \"Alice\")\nsingleton retrieve(\"user\") println  // \"Alice\"\n```\n\n### 3. Runtime Class Modification\n\nYou can fundamentally change what a \"class\" does:\n\n```io\nNumber := Object clone\nNumber value := 0\nNumber + := method(n,\n    result := Number clone\n    result value = self value + n value\n    result\n)\n\n// Create numbers\nfive := Number clone value = 5\nthree := Number clone value = 3\n\n// Now change how Number works\nNumber + = method(n,\n    result := Number clone\n    result value = self value * n value  // Multiply instead!\n    result\n)\n\n// Existing numbers use the new behavior\neight := five + three\neight value println  // 15 (multiplication!)\n```\n\n## Delegation vs Inheritance\n\nPrototype-based languages use delegation rather than inheritance. When an object doesn't have a slot, it delegates to its prototype:\n\n```io\nAccount := Object clone\nAccount balance := 0\nAccount deposit := method(amount,\n    balance = balance + amount\n    self\n)\n\nsavings := Account clone\nsavings deposit(100)\n\n// Let's trace what happens:\n// 1. savings receives 'deposit' message\n// 2. savings doesn't have 'deposit' slot\n// 3. savings delegates to Account\n// 4. Account's deposit method runs\n// 5. But 'self' is still savings\n// 6. So savings's balance is updated\n\nsavings balance println    // 100\nAccount balance println    // 0 (unchanged)\n```\n\nThis is subtly different from class-based inheritance where methods are copied or looked up in a class hierarchy.\n\n## Practical Patterns\n\n### The Constructor Pattern\n\nWhile Io doesn't have constructors, you can create them:\n\n```io\nPerson := Object clone\nPerson init := method(name, age,\n    self name := name\n    self age := age\n    self\n)\n\nPerson new := method(name, age,\n    self clone init(name, age)\n)\n\n// Usage\nalice := Person new(\"Alice\", 30)\n```\n\n### The Mixin Pattern\n\nUse prototypes as mixins for shared behavior:\n\n```io\n// Define mixins\nTimestamped := Object clone\nTimestamped createdAt := Date now\nTimestamped age := method(\n    Date now - createdAt\n)\n\nSerializable := Object clone\nSerializable toJson := method(\n    // Implementation\n)\n\n// Use mixins\nDocument := Object clone\nDocument appendProto(Timestamped)\nDocument appendProto(Serializable)\n\ndoc := Document clone\ndoc age println\ndoc toJson\n```\n\n### The Factory Pattern\n\nObjects can create other objects with specific configurations:\n\n```io\nShapeFactory := Object clone\nShapeFactory circle := method(radius,\n    c := Object clone\n    c radius := radius\n    c area := method(3.14159 * radius * radius)\n    c\n)\n\nShapeFactory rectangle := method(width, height,\n    r := Object clone\n    r width := width\n    r height := height\n    r area := method(width * height)\n    r\n)\n\n// Usage\nmyCircle := ShapeFactory circle(5)\nmyRect := ShapeFactory rectangle(10, 20)\n```\n\n## JavaScript: A Familiar Prototype System\n\nIf you know JavaScript, you've already used prototype-based programming:\n\n```javascript\n// JavaScript (before ES6 classes)\nfunction Animal(name) {\n    this.name = name;\n}\n\nAnimal.prototype.speak = function() {\n    console.log(\"Some sound\");\n};\n\nfunction Dog(name) {\n    Animal.call(this, name);\n}\n\nDog.prototype = Object.create(Animal.prototype);\nDog.prototype.bark = function() {\n    console.log(\"Woof!\");\n};\n```\n\nBut JavaScript complicated things with constructor functions and later added class syntax as sugar. Io keeps prototypes pure and simple.\n\n## Common Misconceptions\n\n### \"No Classes Means No Structure\"\n\nFalse. You can create well-structured programs with prototypes:\n\n```io\n// Define clear prototype hierarchies\nVehicle := Object clone\nVehicle speed := 0\n\nCar := Vehicle clone\nCar wheels := 4\n\nElectricCar := Car clone\nElectricCar batteryLevel := 100\n\n// The structure is clear and maintainable\n```\n\n### \"Prototypes Are Just Classes With Different Syntax\"\n\nFalse. Prototypes are more flexible:\n\n```io\n// Start with a prototype\nDog := Object clone\nDog bark := method(\"Woof!\" println)\n\nfido := Dog clone\n\n// Later, change fido's prototype!\nCat := Object clone\nCat meow := method(\"Meow!\" println)\n\nfido protos = list(Cat)\nfido meow  // \"Meow!\" - fido is now a cat!\n```\n\nYou can't change an object's class at runtime in most class-based languages.\n\n### \"Multiple Inheritance Is Always Confusing\"\n\nIo's prototype lists make multiple inheritance explicit and controllable:\n\n```io\nA := Object clone\nA foo := method(\"A's foo\" println)\n\nB := Object clone  \nB foo := method(\"B's foo\" println)\n\nC := Object clone\nC appendProto(A)\nC appendProto(B)\n\nC foo  // \"A's foo\" (A comes first in the list)\n\n// Reorder to change priority\nC protos = list(B, A)\nC foo  // \"B's foo\" (B now comes first)\n```\n\n## Exercises\n\n1. **Prototype Chain Explorer**: Write a method that prints an object's complete prototype chain with indentation showing the hierarchy.\n\n2. **Class Emulator**: Create a `Class` object that provides `new`, `extends`, and other class-like conveniences while using prototypes underneath.\n\n3. **Multiple Inheritance Diamond**: Create a diamond inheritance pattern (D inherits from B and C, which both inherit from A) and explore how Io resolves method conflicts.\n\n4. **Dynamic Reclassing**: Write a `become` method that changes an object's prototype chain to make it \"become\" an instance of a different prototype.\n\n5. **Prototype Versioning**: Implement a system where objects can \"lock\" to a specific version of their prototype, unaffected by later prototype modifications.\n\n## Real-World Implications\n\nPrototype-based programming shines in certain scenarios:\n\n1. **Rapid Prototyping**: Create and modify objects on the fly without defining classes\n2. **Dynamic Systems**: Systems where object behavior needs to change at runtime\n3. **DSLs**: Domain-specific languages where objects morph based on context\n4. **Learning**: Understanding prototypes deepens your understanding of JavaScript\n5. **Simplicity**: No distinction between classes and objects means fewer concepts\n\n## Conclusion\n\nPrototype-based programming isn't just \"classes with different syntax\"—it's a fundamentally different way of thinking about objects and inheritance. Instead of rigid templates (classes) and instances, you have a fluid world where any object can serve as a template for others, where inheritance is delegation, and where the structure of your program can change at runtime.\n\nThis flexibility can be overwhelming at first, especially if you're used to the safety of static classes. But it can also be liberating. You're not constrained by decisions made at compile time. You can experiment, evolve, and adapt your objects as your understanding of the problem grows.\n\nIn the next chapter, we'll dive deeper into how objects communicate through Io's message passing system—the heartbeat of the language.\n"}}</script>
+</body>
+</html>

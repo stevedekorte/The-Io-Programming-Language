@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="stylesheet" href="../colvmn/style.css">
+<title>Collections – Io</title>
+  <link rel="alternate" type="text/plain" title="llms.txt" href="/llms.txt">
+  <meta name="description" content="Lists, Maps, and Sequences: Io's core data structures and how to extend them.">
+</head>
+<body>
+<div class="page loaded"><div class="header"><div><h1>Collections</h1><a class="back-link" href="../index.html">&larr; The Io Programming Language</a></div><a class="brand" href="../index.html">Io</a></div><p class="intro">Lists, Maps, and Sequences: Io's core data structures and how to extend them.</p><nav class="toc"><ul><li><a href="#lists-ordered-collections">Lists: Ordered Collections</a></li><li><a href="#maps-key-value-stores">Maps: Key-Value Stores</a></li><li><a href="#sequences-string-handling">Sequences: String Handling</a></li><li><a href="#creating-custom-collections">Creating Custom Collections</a></li><li><a href="#advanced-collection-patterns">Advanced Collection Patterns</a></li><li><a href="#performance-considerations">Performance Considerations</a></li><li><a href="#collection-serialization">Collection Serialization</a></li><li><a href="#common-pitfalls">Common Pitfalls</a></li><li><a href="#exercises">Exercises</a></li><li><a href="#real-world-example-todo-list-with-tags">Real-World Example: Todo List with Tags</a></li><li><a href="#conclusion">Conclusion</a></li></ul></nav><div class="section"><div class="section-body"><p>Collections are fundamental to any programming language. Io provides three main collection types: List (ordered, indexed), Map (key-value pairs), and Sequence (strings). This chapter explores these collections, their methods, and how to create custom collection types.</p></div></div><h2 id="lists-ordered-collections">Lists: Ordered Collections</h2><div class="section"><div class="section-body"><p>Lists in Io are dynamic arrays that can hold any type of object:</p><pre><code>// Creating lists
+empty := list()
+numbers := list(1, 2, 3, 4, 5)
+mixed := list("hello", 42, true, Object clone)
+
+// Lists are objects
+numbers type println  // List
+
+// Basic operations
+numbers size println      // 5
+numbers isEmpty println   // false
+numbers first println     // 1
+numbers last println      // 5
+numbers at(2) println     // 3 (zero-indexed)</code></pre><h3 id="list-manipulation">List Manipulation</h3><pre><code>fruits := list("apple", "banana")
+
+// Adding elements
+fruits append("orange")
+fruits prepend("grape")
+fruits println  // list(grape, apple, banana, orange)
+
+// Insert at position
+fruits atInsert(2, "mango")
+fruits println  // list(grape, apple, mango, banana, orange)
+
+// Removing elements
+fruits remove("mango")
+fruits removeAt(0)
+fruits pop  // Removes and returns last element
+fruits println  // list(apple, banana)
+
+// Multiple operations
+fruits appendSeq(list("kiwi", "peach"))
+fruits println  // list(apple, banana, kiwi, peach)</code></pre><h3 id="list-iteration">List Iteration</h3><pre><code>numbers := list(1, 2, 3, 4, 5)
+
+// Basic iteration
+numbers foreach(n,
+    n println
+)
+
+// With index
+numbers foreach(i, n,
+    (i .. ": " .. n) println
+)
+
+// Reverse iteration
+numbers reverseForEach(n,
+    n println
+)</code></pre><h3 id="functional-operations">Functional Operations</h3><pre><code>numbers := list(1, 2, 3, 4, 5)
+
+// Map: transform each element
+squared := numbers map(x, x * x)
+squared println  // list(1, 4, 9, 16, 25)
+
+// Select: filter elements
+evens := numbers select(x, x % 2 == 0)
+evens println  // list(2, 4)
+
+// Reject: inverse of select
+odds := numbers reject(x, x % 2 == 0)
+odds println  // list(1, 3, 5)
+
+// Detect: find first match
+firstEven := numbers detect(x, x % 2 == 0)
+firstEven println  // 2
+
+// Reduce: aggregate
+sum := numbers reduce(+)
+sum println  // 15
+
+// Custom reduce
+product := numbers reduce(a, b, a * b)
+product println  // 120
+
+// Any/all predicates
+numbers contains(3) println  // true
+numbers containsAll(list(2, 4)) println  // true
+numbers containsAny(list(10, 3)) println  // true</code></pre><h3 id="list-slicing-and-manipulation">List Slicing and Manipulation</h3><pre><code>letters := list("a", "b", "c", "d", "e")
+
+// Slicing
+letters slice(1, 3) println  // list(b, c, d)
+letters slice(2) println     // list(c, d, e)
+
+// Copying
+copy := letters copy
+copy atPut(0, "z")
+letters println  // list(a, b, c, d, e) - unchanged
+copy println     // list(z, b, c, d, e)
+
+// Sorting
+numbers := list(3, 1, 4, 1, 5, 9)
+numbers sort println  // list(1, 1, 3, 4, 5, 9)
+
+// Custom sort
+people := list(
+    Object clone do(name := "Alice"; age := 30),
+    Object clone do(name := "Bob"; age := 25),
+    Object clone do(name := "Charlie"; age := 35)
+)
+
+people sortBy(block(p, p age)) foreach(p,
+    (p name .. ": " .. p age) println
+)
+// Bob: 25
+// Alice: 30
+// Charlie: 35</code></pre></div></div><h2 id="maps-key-value-stores">Maps: Key-Value Stores</h2><div class="section"><div class="section-body"><p>Maps (also called dictionaries or hash tables) store key-value pairs:</p><pre><code>// Creating maps
+empty := Map clone
+person := Map clone atPut("name", "Alice") atPut("age", 30)
+
+// Alternative creation
+person := Map with(
+    "name", "Alice",
+    "age", 30,
+    "city", "New York"
+)
+
+// Accessing values
+person at("name") println     // Alice
+person at("missing") println  // nil
+person at("missing", "default") println  // default
+
+// Setting values
+person atPut("age", 31)
+person atPut("email", "alice@example.com")
+
+// Checking keys
+person hasKey("name") println  // true
+person hasKey("phone") println  // false</code></pre><h3 id="map-operations">Map Operations</h3><pre><code>map := Map with("a", 1, "b", 2, "c", 3)
+
+// Get all keys and values
+map keys println    // list(a, b, c)
+map values println  // list(1, 2, 3)
+
+// Size and emptiness
+map size println      // 3
+map isEmpty println   // false
+
+// Removing entries
+map removeAt("b")
+map println  // Map_0x...: a=1, c=3
+
+// Iteration
+map foreach(key, value,
+    (key .. " =&gt; " .. value) println
+)
+
+// Merging maps
+other := Map with("c", 30, "d", 4)
+map merge(other)
+map println  // a=1, c=30, d=4 (note c was overwritten)</code></pre><h3 id="maps-as-objects">Maps as Objects</h3><p>Maps can act like objects with dynamic properties:</p><pre><code>// Create object-like map
+obj := Map clone
+obj atPut("greet", method(name,
+    ("Hello, " .. name .. "!") println
+))
+obj atPut("x", 10)
+obj atPut("y", 20)
+
+// Use like object (sort of)
+obj at("greet") call("World")  // Hello, World!
+obj at("x") println  // 10</code></pre></div></div><h2 id="sequences-string-handling">Sequences: String Handling</h2><div class="section"><div class="section-body"><p>Sequences are Io's strings, but they're mutable and act like byte arrays:</p><pre><code>text := "Hello, World!"
+
+// Basic operations
+text size println          // 13
+text at(0) println        // 72 (ASCII 'H')
+text at(0) asCharacter println  // H
+
+// Slicing
+text slice(0, 5) println   // Hello
+text slice(7) println      // World!
+
+// Searching
+text findSeq("World") println  // 7 (index)
+text containsSeq("Hello") println  // true
+text beginsWithSeq("Hello") println  // true
+text endsWithSeq("!") println  // true</code></pre><h3 id="string-manipulation">String Manipulation</h3><pre><code>text := "  Hello, World!  "
+
+// Trimming
+text strip println         // "Hello, World!"
+text lstrip println        // "Hello, World!  "
+text rstrip println        // "  Hello, World!"
+
+// Case conversion
+"hello" upper println      // HELLO
+"WORLD" lower println      // world
+"hello world" asCapitalized println  // Hello world
+
+// Replacement
+"hello world" replaceSeq("world", "Io") println  // hello Io
+"abcabc" replaceFirstSeq("a", "X") println  // Xbcabc
+
+// Splitting and joining
+words := "apple,banana,orange" split(",")
+words println  // list(apple, banana, orange)
+
+words join("-") println  // apple-banana-orange</code></pre><h3 id="string-building">String Building</h3><pre><code>// Inefficient string concatenation
+result := ""
+for(i, 1, 1000,
+    result = result .. i .. ", "
+)
+
+// Better: use a list
+parts := list()
+for(i, 1, 1000,
+    parts append(i)
+)
+result := parts join(", ")
+
+// Or use Sequence's mutable nature
+seq := Sequence clone
+for(i, 1, 100,
+    seq appendSeq(i asString) appendSeq(", ")
+)</code></pre><h3 id="regular-expressions">Regular Expressions</h3><p>Io has built-in regex support:</p><pre><code>text := "The year 2024 has 365 days"
+
+// Find matches
+text findRegex("\\d+") println  // MatchResult...
+text allMatchesOfRegex("\\d+") foreach(match,
+    match println  // 2024, 365
+)
+
+// Replace with regex
+text replaceAllRegex("\\d+", "N") println  // The year N has N days
+
+// Capture groups
+email := "user@example.com"
+match := email matchesOfRegex("(\\w+)@(\\w+\\.\\w+)") 
+if(match,
+    match at(1) println  // user
+    match at(2) println  // example.com
+)</code></pre></div></div><h2 id="creating-custom-collections">Creating Custom Collections</h2><div class="section"><div class="section-body"><h3 id="stack-implementation">Stack Implementation</h3><pre><code>Stack := List clone
+Stack push := method(item,
+    self append(item)
+)
+
+Stack pop := method(
+    if(size &gt; 0,
+        removeAt(size - 1),
+        nil
+    )
+)
+
+Stack peek := method(
+    if(size &gt; 0,
+        at(size - 1),
+        nil
+    )
+)
+
+// Usage
+stack := Stack clone
+stack push(1) push(2) push(3)
+stack pop println   // 3
+stack peek println  // 2
+stack pop println   // 2
+stack pop println   // 1</code></pre><h3 id="queue-implementation">Queue Implementation</h3><pre><code>Queue := Object clone
+Queue init := method(
+    self items := list()
+    self
+)
+
+Queue enqueue := method(item,
+    items append(item)
+    self
+)
+
+Queue dequeue := method(
+    if(items size &gt; 0,
+        items removeAt(0),
+        nil
+    )
+)
+
+Queue isEmpty := method(items isEmpty)
+Queue size := method(items size)
+
+// Usage
+queue := Queue clone init
+queue enqueue("a") enqueue("b") enqueue("c")
+queue dequeue println  // a
+queue dequeue println  // b
+queue size println     // 1</code></pre><h3 id="set-implementation">Set Implementation</h3><pre><code>Set := Object clone
+Set init := method(
+    self items := Map clone
+    self
+)
+
+Set add := method(item,
+    items atPut(item asString, item)
+    self
+)
+
+Set remove := method(item,
+    items removeAt(item asString)
+    self
+)
+
+Set contains := method(item,
+    items hasKey(item asString)
+)
+
+Set union := method(other,
+    result := Set clone init
+    items foreach(k, v, result add(v))
+    other items foreach(k, v, result add(v))
+    result
+)
+
+Set intersection := method(other,
+    result := Set clone init
+    items foreach(k, v,
+        if(other contains(v), result add(v))
+    )
+    result
+)
+
+// Usage
+set1 := Set clone init add(1) add(2) add(3)
+set2 := Set clone init add(2) add(3) add(4)
+
+set1 contains(2) println  // true
+union := set1 union(set2)
+intersection := set1 intersection(set2)</code></pre></div></div><h2 id="advanced-collection-patterns">Advanced Collection Patterns</h2><div class="section"><div class="section-body"><h3 id="lazy-evaluation">Lazy Evaluation</h3><pre><code>LazyList := Object clone
+LazyList init := method(generator,
+    self generator := generator
+    self cache := list()
+    self
+)
+
+LazyList at := method(index,
+    while(cache size &lt;= index,
+        cache append(generator call(cache size))
+    )
+    cache at(index)
+)
+
+LazyList take := method(n,
+    result := list()
+    for(i, 0, n - 1,
+        result append(self at(i))
+    )
+    result
+)
+
+// Infinite fibonacci sequence
+fibGen := LazyList clone init(block(n,
+    if(n &lt; 2, n, self at(n - 1) + self at(n - 2))
+))
+
+fibGen take(10) println  // list(0, 1, 1, 2, 3, 5, 8, 13, 21, 34)</code></pre><h3 id="collection-pipeline">Collection Pipeline</h3><pre><code>// Method chaining for data processing
+data := list(1, 2, 3, 4, 5, 6, 7, 8, 9, 10)
+
+result := data select(x, x % 2 == 0) \
+    map(x, x * x) \
+    select(x, x &gt; 10) \
+    reduce(+)
+
+result println  // 120 (16 + 36 + 64)
+
+// Custom pipeline
+List pipeline := method(
+    Pipeline clone setList(self)
+)
+
+Pipeline := Object clone
+Pipeline setList := method(list,
+    self list := list
+    self
+)
+
+Pipeline where := method(predicate,
+    self list = list select(predicate)
+    self
+)
+
+Pipeline transform := method(mapper,
+    self list = list map(mapper)
+    self
+)
+
+Pipeline aggregate := method(reducer,
+    list reduce(reducer)
+)
+
+// Usage
+numbers := list(1, 2, 3, 4, 5)
+total := numbers pipeline \
+    where(x, x % 2 == 0) \
+    transform(x, x * x) \
+    aggregate(+)
+
+total println  // 20 (4 + 16)</code></pre><h3 id="nested-collections">Nested Collections</h3><pre><code>// Matrix as list of lists
+matrix := list(
+    list(1, 2, 3),
+    list(4, 5, 6),
+    list(7, 8, 9)
+)
+
+// Access element
+matrix at(1) at(2) println  // 6
+
+// Transpose
+transpose := method(matrix,
+    rows := matrix size
+    cols := matrix at(0) size
+    result := list()
+    
+    for(c, 0, cols - 1,
+        col := list()
+        for(r, 0, rows - 1,
+            col append(matrix at(r) at(c))
+        )
+        result append(col)
+    )
+    result
+)
+
+transpose(matrix) println
+// list(list(1, 4, 7), list(2, 5, 8), list(3, 6, 9))</code></pre></div></div><h2 id="performance-considerations">Performance Considerations</h2><div class="section"><div class="section-body"><pre><code>// List operations performance
+list := List clone
+
+// O(1) operations
+list append(item)      // Constant time
+list at(index)         // Constant time
+list size              // Constant time
+
+// O(n) operations
+list indexOf(item)     // Linear search
+list contains(item)    // Linear search
+list remove(item)      // Linear search + shift
+
+// Map operations are generally O(1)
+map := Map clone
+map atPut(key, value)  // Constant average
+map at(key)            // Constant average
+map removeAt(key)      // Constant average
+
+// Choose the right collection for your needs</code></pre></div></div><h2 id="collection-serialization">Collection Serialization</h2><div class="section"><div class="section-body"><pre><code>// JSON serialization
+list := list(1, 2, 3, Map with("name", "Alice"))
+json := list asJson
+json println  // [1,2,3,{"name":"Alice"}]
+
+// Deserialize
+restored := json parseJson
+restored println
+
+// Custom serialization
+Collection := Object clone
+Collection serialize := method(
+    result := list()
+    self foreach(item,
+        if(item hasSlot("serialize"),
+            result append(item serialize),
+            result append(item asString)
+        )
+    )
+    result join("|")
+)</code></pre></div></div><h2 id="common-pitfalls">Common Pitfalls</h2><div class="section"><div class="section-body"><h3 id="shared-references">Shared References</h3><pre><code>// PROBLEM: Shared reference
+original := list(1, 2, 3)
+copy := original  // Not a copy!
+copy append(4)
+original println  // list(1, 2, 3, 4) - modified!
+
+// SOLUTION: Use copy
+original := list(1, 2, 3)
+copy := original copy
+copy append(4)
+original println  // list(1, 2, 3) - unchanged</code></pre><h3 id="iterator-invalidation">Iterator Invalidation</h3><pre><code>// PROBLEM: Modifying while iterating
+list := list(1, 2, 3, 4, 5)
+list foreach(item,
+    if(item % 2 == 0,
+        list remove(item)  // Dangerous!
+    )
+)
+
+// SOLUTION: Use select/reject or iterate on copy
+list := list(1, 2, 3, 4, 5)
+list = list reject(item, item % 2 == 0)</code></pre></div></div><h2 id="exercises">Exercises</h2><div class="section"><div class="section-body"><ol><li><strong>Circular Buffer</strong>: Implement a fixed-size circular buffer that overwrites old elements.</li><li><strong>MultiMap</strong>: Create a map that can store multiple values per key.</li><li><strong>Sorted List</strong>: Implement a list that maintains sorted order on insertion.</li><li><strong>Tree Structure</strong>: Build a tree collection with parent-child relationships.</li><li><strong>Graph</strong>: Implement a graph data structure with nodes and edges.</li></ol></div></div><h2 id="real-world-example-todo-list-with-tags">Real-World Example: Todo List with Tags</h2><div class="section"><div class="section-body"><pre><code>TodoItem := Object clone
+TodoItem init := method(description,
+    self description := description
+    self tags := Set clone init
+    self completed := false
+    self
+)
+
+TodoList := Object clone
+TodoList init := method(
+    self items := list()
+    self
+)
+
+TodoList add := method(description,
+    item := TodoItem clone init(description)
+    items append(item)
+    item
+)
+
+TodoList taggedWith := method(tag,
+    items select(item, item tags contains(tag))
+)
+
+TodoList pending := method(
+    items select(item, item completed not)
+)
+
+TodoList complete := method(description,
+    item := items detect(i, i description == description)
+    if(item, item completed = true)
+    self
+)
+
+// Usage
+todos := TodoList clone init
+
+todos add("Write documentation") tags add("work") add("writing")
+todos add("Fix bugs") tags add("work") add("urgent")
+todos add("Buy groceries") tags add("personal")
+
+todos taggedWith("urgent") foreach(item,
+    item description println
+)
+// Fix bugs
+
+todos complete("Buy groceries")
+todos pending foreach(item,
+    item description println
+)
+// Write documentation
+// Fix bugs</code></pre></div></div><h2 id="conclusion">Conclusion</h2><div class="section"><div class="section-body"><p>Io's collections&mdash;List, Map, and Sequence&mdash;provide a solid foundation for data manipulation. They're all objects, following Io's uniform object model, and support functional programming patterns like map, select, and reduce.</p><p>The real power comes from Io's flexibility: you can add methods to existing collection types, create custom collections that integrate seamlessly, and build sophisticated data structures using simple object composition. Understanding collections deeply is essential for effective Io programming, as they form the backbone of most data processing tasks.</p></div></div><div class="page-footer"><a class="next-link" href="../Blocks-and-Closures/index.html">Blocks and Closures &rarr;</a></div></div>
+<script src="../colvmn/layout/bundle.js" defer></script>
+  <script type="application/json" id="colvmn-prefetch">{"./_index.json":{"ok":false,"status":404},"./_index.md":{"ok":true,"status":200,"content":"---\ntitle: Collections\ntopTitle: Io\nsubtitle: \"Lists, Maps, and Sequences: Io's core data structures and how to extend them.\"\nnextSectionLink: true\n---\n\nCollections are fundamental to any programming language. Io provides three main collection types: List (ordered, indexed), Map (key-value pairs), and Sequence (strings). This chapter explores these collections, their methods, and how to create custom collection types.\n\n## Lists: Ordered Collections\n\nLists in Io are dynamic arrays that can hold any type of object:\n\n```io\n// Creating lists\nempty := list()\nnumbers := list(1, 2, 3, 4, 5)\nmixed := list(\"hello\", 42, true, Object clone)\n\n// Lists are objects\nnumbers type println  // List\n\n// Basic operations\nnumbers size println      // 5\nnumbers isEmpty println   // false\nnumbers first println     // 1\nnumbers last println      // 5\nnumbers at(2) println     // 3 (zero-indexed)\n```\n\n### List Manipulation\n\n```io\nfruits := list(\"apple\", \"banana\")\n\n// Adding elements\nfruits append(\"orange\")\nfruits prepend(\"grape\")\nfruits println  // list(grape, apple, banana, orange)\n\n// Insert at position\nfruits atInsert(2, \"mango\")\nfruits println  // list(grape, apple, mango, banana, orange)\n\n// Removing elements\nfruits remove(\"mango\")\nfruits removeAt(0)\nfruits pop  // Removes and returns last element\nfruits println  // list(apple, banana)\n\n// Multiple operations\nfruits appendSeq(list(\"kiwi\", \"peach\"))\nfruits println  // list(apple, banana, kiwi, peach)\n```\n\n### List Iteration\n\n```io\nnumbers := list(1, 2, 3, 4, 5)\n\n// Basic iteration\nnumbers foreach(n,\n    n println\n)\n\n// With index\nnumbers foreach(i, n,\n    (i .. \": \" .. n) println\n)\n\n// Reverse iteration\nnumbers reverseForEach(n,\n    n println\n)\n```\n\n### Functional Operations\n\n```io\nnumbers := list(1, 2, 3, 4, 5)\n\n// Map: transform each element\nsquared := numbers map(x, x * x)\nsquared println  // list(1, 4, 9, 16, 25)\n\n// Select: filter elements\nevens := numbers select(x, x % 2 == 0)\nevens println  // list(2, 4)\n\n// Reject: inverse of select\nodds := numbers reject(x, x % 2 == 0)\nodds println  // list(1, 3, 5)\n\n// Detect: find first match\nfirstEven := numbers detect(x, x % 2 == 0)\nfirstEven println  // 2\n\n// Reduce: aggregate\nsum := numbers reduce(+)\nsum println  // 15\n\n// Custom reduce\nproduct := numbers reduce(a, b, a * b)\nproduct println  // 120\n\n// Any/all predicates\nnumbers contains(3) println  // true\nnumbers containsAll(list(2, 4)) println  // true\nnumbers containsAny(list(10, 3)) println  // true\n```\n\n### List Slicing and Manipulation\n\n```io\nletters := list(\"a\", \"b\", \"c\", \"d\", \"e\")\n\n// Slicing\nletters slice(1, 3) println  // list(b, c, d)\nletters slice(2) println     // list(c, d, e)\n\n// Copying\ncopy := letters copy\ncopy atPut(0, \"z\")\nletters println  // list(a, b, c, d, e) - unchanged\ncopy println     // list(z, b, c, d, e)\n\n// Sorting\nnumbers := list(3, 1, 4, 1, 5, 9)\nnumbers sort println  // list(1, 1, 3, 4, 5, 9)\n\n// Custom sort\npeople := list(\n    Object clone do(name := \"Alice\"; age := 30),\n    Object clone do(name := \"Bob\"; age := 25),\n    Object clone do(name := \"Charlie\"; age := 35)\n)\n\npeople sortBy(block(p, p age)) foreach(p,\n    (p name .. \": \" .. p age) println\n)\n// Bob: 25\n// Alice: 30\n// Charlie: 35\n```\n\n## Maps: Key-Value Stores\n\nMaps (also called dictionaries or hash tables) store key-value pairs:\n\n```io\n// Creating maps\nempty := Map clone\nperson := Map clone atPut(\"name\", \"Alice\") atPut(\"age\", 30)\n\n// Alternative creation\nperson := Map with(\n    \"name\", \"Alice\",\n    \"age\", 30,\n    \"city\", \"New York\"\n)\n\n// Accessing values\nperson at(\"name\") println     // Alice\nperson at(\"missing\") println  // nil\nperson at(\"missing\", \"default\") println  // default\n\n// Setting values\nperson atPut(\"age\", 31)\nperson atPut(\"email\", \"alice@example.com\")\n\n// Checking keys\nperson hasKey(\"name\") println  // true\nperson hasKey(\"phone\") println  // false\n```\n\n### Map Operations\n\n```io\nmap := Map with(\"a\", 1, \"b\", 2, \"c\", 3)\n\n// Get all keys and values\nmap keys println    // list(a, b, c)\nmap values println  // list(1, 2, 3)\n\n// Size and emptiness\nmap size println      // 3\nmap isEmpty println   // false\n\n// Removing entries\nmap removeAt(\"b\")\nmap println  // Map_0x...: a=1, c=3\n\n// Iteration\nmap foreach(key, value,\n    (key .. \" => \" .. value) println\n)\n\n// Merging maps\nother := Map with(\"c\", 30, \"d\", 4)\nmap merge(other)\nmap println  // a=1, c=30, d=4 (note c was overwritten)\n```\n\n### Maps as Objects\n\nMaps can act like objects with dynamic properties:\n\n```io\n// Create object-like map\nobj := Map clone\nobj atPut(\"greet\", method(name,\n    (\"Hello, \" .. name .. \"!\") println\n))\nobj atPut(\"x\", 10)\nobj atPut(\"y\", 20)\n\n// Use like object (sort of)\nobj at(\"greet\") call(\"World\")  // Hello, World!\nobj at(\"x\") println  // 10\n```\n\n## Sequences: String Handling\n\nSequences are Io's strings, but they're mutable and act like byte arrays:\n\n```io\ntext := \"Hello, World!\"\n\n// Basic operations\ntext size println          // 13\ntext at(0) println        // 72 (ASCII 'H')\ntext at(0) asCharacter println  // H\n\n// Slicing\ntext slice(0, 5) println   // Hello\ntext slice(7) println      // World!\n\n// Searching\ntext findSeq(\"World\") println  // 7 (index)\ntext containsSeq(\"Hello\") println  // true\ntext beginsWithSeq(\"Hello\") println  // true\ntext endsWithSeq(\"!\") println  // true\n```\n\n### String Manipulation\n\n```io\ntext := \"  Hello, World!  \"\n\n// Trimming\ntext strip println         // \"Hello, World!\"\ntext lstrip println        // \"Hello, World!  \"\ntext rstrip println        // \"  Hello, World!\"\n\n// Case conversion\n\"hello\" upper println      // HELLO\n\"WORLD\" lower println      // world\n\"hello world\" asCapitalized println  // Hello world\n\n// Replacement\n\"hello world\" replaceSeq(\"world\", \"Io\") println  // hello Io\n\"abcabc\" replaceFirstSeq(\"a\", \"X\") println  // Xbcabc\n\n// Splitting and joining\nwords := \"apple,banana,orange\" split(\",\")\nwords println  // list(apple, banana, orange)\n\nwords join(\"-\") println  // apple-banana-orange\n```\n\n### String Building\n\n```io\n// Inefficient string concatenation\nresult := \"\"\nfor(i, 1, 1000,\n    result = result .. i .. \", \"\n)\n\n// Better: use a list\nparts := list()\nfor(i, 1, 1000,\n    parts append(i)\n)\nresult := parts join(\", \")\n\n// Or use Sequence's mutable nature\nseq := Sequence clone\nfor(i, 1, 100,\n    seq appendSeq(i asString) appendSeq(\", \")\n)\n```\n\n### Regular Expressions\n\nIo has built-in regex support:\n\n```io\ntext := \"The year 2024 has 365 days\"\n\n// Find matches\ntext findRegex(\"\\\\d+\") println  // MatchResult...\ntext allMatchesOfRegex(\"\\\\d+\") foreach(match,\n    match println  // 2024, 365\n)\n\n// Replace with regex\ntext replaceAllRegex(\"\\\\d+\", \"N\") println  // The year N has N days\n\n// Capture groups\nemail := \"user@example.com\"\nmatch := email matchesOfRegex(\"(\\\\w+)@(\\\\w+\\\\.\\\\w+)\") \nif(match,\n    match at(1) println  // user\n    match at(2) println  // example.com\n)\n```\n\n## Creating Custom Collections\n\n### Stack Implementation\n\n```io\nStack := List clone\nStack push := method(item,\n    self append(item)\n)\n\nStack pop := method(\n    if(size > 0,\n        removeAt(size - 1),\n        nil\n    )\n)\n\nStack peek := method(\n    if(size > 0,\n        at(size - 1),\n        nil\n    )\n)\n\n// Usage\nstack := Stack clone\nstack push(1) push(2) push(3)\nstack pop println   // 3\nstack peek println  // 2\nstack pop println   // 2\nstack pop println   // 1\n```\n\n### Queue Implementation\n\n```io\nQueue := Object clone\nQueue init := method(\n    self items := list()\n    self\n)\n\nQueue enqueue := method(item,\n    items append(item)\n    self\n)\n\nQueue dequeue := method(\n    if(items size > 0,\n        items removeAt(0),\n        nil\n    )\n)\n\nQueue isEmpty := method(items isEmpty)\nQueue size := method(items size)\n\n// Usage\nqueue := Queue clone init\nqueue enqueue(\"a\") enqueue(\"b\") enqueue(\"c\")\nqueue dequeue println  // a\nqueue dequeue println  // b\nqueue size println     // 1\n```\n\n### Set Implementation\n\n```io\nSet := Object clone\nSet init := method(\n    self items := Map clone\n    self\n)\n\nSet add := method(item,\n    items atPut(item asString, item)\n    self\n)\n\nSet remove := method(item,\n    items removeAt(item asString)\n    self\n)\n\nSet contains := method(item,\n    items hasKey(item asString)\n)\n\nSet union := method(other,\n    result := Set clone init\n    items foreach(k, v, result add(v))\n    other items foreach(k, v, result add(v))\n    result\n)\n\nSet intersection := method(other,\n    result := Set clone init\n    items foreach(k, v,\n        if(other contains(v), result add(v))\n    )\n    result\n)\n\n// Usage\nset1 := Set clone init add(1) add(2) add(3)\nset2 := Set clone init add(2) add(3) add(4)\n\nset1 contains(2) println  // true\nunion := set1 union(set2)\nintersection := set1 intersection(set2)\n```\n\n## Advanced Collection Patterns\n\n### Lazy Evaluation\n\n```io\nLazyList := Object clone\nLazyList init := method(generator,\n    self generator := generator\n    self cache := list()\n    self\n)\n\nLazyList at := method(index,\n    while(cache size \u003c= index,\n        cache append(generator call(cache size))\n    )\n    cache at(index)\n)\n\nLazyList take := method(n,\n    result := list()\n    for(i, 0, n - 1,\n        result append(self at(i))\n    )\n    result\n)\n\n// Infinite fibonacci sequence\nfibGen := LazyList clone init(block(n,\n    if(n \u003c 2, n, self at(n - 1) + self at(n - 2))\n))\n\nfibGen take(10) println  // list(0, 1, 1, 2, 3, 5, 8, 13, 21, 34)\n```\n\n### Collection Pipeline\n\n```io\n// Method chaining for data processing\ndata := list(1, 2, 3, 4, 5, 6, 7, 8, 9, 10)\n\nresult := data select(x, x % 2 == 0) \\\n    map(x, x * x) \\\n    select(x, x > 10) \\\n    reduce(+)\n\nresult println  // 120 (16 + 36 + 64)\n\n// Custom pipeline\nList pipeline := method(\n    Pipeline clone setList(self)\n)\n\nPipeline := Object clone\nPipeline setList := method(list,\n    self list := list\n    self\n)\n\nPipeline where := method(predicate,\n    self list = list select(predicate)\n    self\n)\n\nPipeline transform := method(mapper,\n    self list = list map(mapper)\n    self\n)\n\nPipeline aggregate := method(reducer,\n    list reduce(reducer)\n)\n\n// Usage\nnumbers := list(1, 2, 3, 4, 5)\ntotal := numbers pipeline \\\n    where(x, x % 2 == 0) \\\n    transform(x, x * x) \\\n    aggregate(+)\n\ntotal println  // 20 (4 + 16)\n```\n\n### Nested Collections\n\n```io\n// Matrix as list of lists\nmatrix := list(\n    list(1, 2, 3),\n    list(4, 5, 6),\n    list(7, 8, 9)\n)\n\n// Access element\nmatrix at(1) at(2) println  // 6\n\n// Transpose\ntranspose := method(matrix,\n    rows := matrix size\n    cols := matrix at(0) size\n    result := list()\n    \n    for(c, 0, cols - 1,\n        col := list()\n        for(r, 0, rows - 1,\n            col append(matrix at(r) at(c))\n        )\n        result append(col)\n    )\n    result\n)\n\ntranspose(matrix) println\n// list(list(1, 4, 7), list(2, 5, 8), list(3, 6, 9))\n```\n\n## Performance Considerations\n\n```io\n// List operations performance\nlist := List clone\n\n// O(1) operations\nlist append(item)      // Constant time\nlist at(index)         // Constant time\nlist size              // Constant time\n\n// O(n) operations\nlist indexOf(item)     // Linear search\nlist contains(item)    // Linear search\nlist remove(item)      // Linear search + shift\n\n// Map operations are generally O(1)\nmap := Map clone\nmap atPut(key, value)  // Constant average\nmap at(key)            // Constant average\nmap removeAt(key)      // Constant average\n\n// Choose the right collection for your needs\n```\n\n## Collection Serialization\n\n```io\n// JSON serialization\nlist := list(1, 2, 3, Map with(\"name\", \"Alice\"))\njson := list asJson\njson println  // [1,2,3,{\"name\":\"Alice\"}]\n\n// Deserialize\nrestored := json parseJson\nrestored println\n\n// Custom serialization\nCollection := Object clone\nCollection serialize := method(\n    result := list()\n    self foreach(item,\n        if(item hasSlot(\"serialize\"),\n            result append(item serialize),\n            result append(item asString)\n        )\n    )\n    result join(\"|\")\n)\n```\n\n## Common Pitfalls\n\n### Shared References\n\n```io\n// PROBLEM: Shared reference\noriginal := list(1, 2, 3)\ncopy := original  // Not a copy!\ncopy append(4)\noriginal println  // list(1, 2, 3, 4) - modified!\n\n// SOLUTION: Use copy\noriginal := list(1, 2, 3)\ncopy := original copy\ncopy append(4)\noriginal println  // list(1, 2, 3) - unchanged\n```\n\n### Iterator Invalidation\n\n```io\n// PROBLEM: Modifying while iterating\nlist := list(1, 2, 3, 4, 5)\nlist foreach(item,\n    if(item % 2 == 0,\n        list remove(item)  // Dangerous!\n    )\n)\n\n// SOLUTION: Use select/reject or iterate on copy\nlist := list(1, 2, 3, 4, 5)\nlist = list reject(item, item % 2 == 0)\n```\n\n## Exercises\n\n1. **Circular Buffer**: Implement a fixed-size circular buffer that overwrites old elements.\n\n2. **MultiMap**: Create a map that can store multiple values per key.\n\n3. **Sorted List**: Implement a list that maintains sorted order on insertion.\n\n4. **Tree Structure**: Build a tree collection with parent-child relationships.\n\n5. **Graph**: Implement a graph data structure with nodes and edges.\n\n## Real-World Example: Todo List with Tags\n\n```io\nTodoItem := Object clone\nTodoItem init := method(description,\n    self description := description\n    self tags := Set clone init\n    self completed := false\n    self\n)\n\nTodoList := Object clone\nTodoList init := method(\n    self items := list()\n    self\n)\n\nTodoList add := method(description,\n    item := TodoItem clone init(description)\n    items append(item)\n    item\n)\n\nTodoList taggedWith := method(tag,\n    items select(item, item tags contains(tag))\n)\n\nTodoList pending := method(\n    items select(item, item completed not)\n)\n\nTodoList complete := method(description,\n    item := items detect(i, i description == description)\n    if(item, item completed = true)\n    self\n)\n\n// Usage\ntodos := TodoList clone init\n\ntodos add(\"Write documentation\") tags add(\"work\") add(\"writing\")\ntodos add(\"Fix bugs\") tags add(\"work\") add(\"urgent\")\ntodos add(\"Buy groceries\") tags add(\"personal\")\n\ntodos taggedWith(\"urgent\") foreach(item,\n    item description println\n)\n// Fix bugs\n\ntodos complete(\"Buy groceries\")\ntodos pending foreach(item,\n    item description println\n)\n// Write documentation\n// Fix bugs\n```\n\n## Conclusion\n\nIo's collections—List, Map, and Sequence—provide a solid foundation for data manipulation. They're all objects, following Io's uniform object model, and support functional programming patterns like map, select, and reduce.\n\nThe real power comes from Io's flexibility: you can add methods to existing collection types, create custom collections that integrate seamlessly, and build sophisticated data structures using simple object composition. Understanding collections deeply is essential for effective Io programming, as they form the backbone of most data processing tasks.\n"},"../_index.json":{"ok":true,"status":200,"content":"{\n  \"title\": \"The Io Programming Language\",\n  \"topTitle\": \"Io\",\n  \"subtitle\": \"A comprehensive guide to prototype-based programming with Io.\",\n  \"content\": [\n    {\n      \"type\": \"ContentText\",\n      \"content\": \"This book provides an in-depth exploration of the Io programming language, designed for experienced programmers who want to understand prototype-based object-oriented programming. Through detailed comparisons with mainstream languages like JavaScript, Python, Ruby, and Java, readers will gain practical insights into Io's unique paradigm.\"\n    },\n    {\n      \"type\": \"ContentCards\",\n      \"title\": \"Chapters\",\n      \"columns\": 2,\n      \"items\": [\n        \"Preface\",\n        \"Introduction\",\n        \"Getting-Started\",\n        \"Everything-is-an-Object\",\n        \"Prototypes-Not-Classes\",\n        \"Messages-and-Slots\",\n        \"Cloning-and-Inheritance\",\n        \"Control-Flow\",\n        \"Collections\",\n        \"Blocks-and-Closures\",\n        \"Exceptions\",\n        \"Metaprogramming\",\n        \"Concurrency\",\n        \"Domain-Specific-Languages\",\n        \"C-Integration\",\n        \"Real-World-Patterns\",\n        \"Case-Studies\",\n        \"Ecosystem-and-Libraries\",\n        \"Conclusion\"\n      ]\n    }\n  ]\n}\n"},"../Blocks-and-Closures/_index.json":{"ok":false,"status":404},"../Blocks-and-Closures/_index.md":{"ok":true,"status":200,"content":"---\ntitle: Blocks and Closures\ntopTitle: Io\nsubtitle: \"First-class code as objects that capture their lexical environment.\"\nnextSectionLink: true\n---\n\nBlocks in Io are first-class objects representing unevaluated code. They capture their creation context, making them closures. This chapter explores blocks, methods, closures, and how they enable functional programming patterns in Io.\n\n## Understanding Blocks and Methods\n\nIn Io, `block` and `method` are similar but have a crucial difference:\n\n```io\n// Block - creates its own scope\nblk := block(x, x * 2)\nblk call(5) println  // 10\n\n// Method - shares scope with receiver\nobj := Object clone\nobj value := 10\nobj meth := method(x, x * value)  // Can access 'value'\nobj blk := block(x, x * value)    // Error when called - no 'value' in block scope\n\nobj meth(5) println  // 50\n// obj blk call(5)  // Exception: value not found\n```\n\nThe key difference:\n- **Methods** have access to `self` and the receiver's slots\n- **Blocks** create their own scope and don't have automatic access to `self`\n\n## Creating and Calling Blocks\n\n```io\n// Simple block\ndouble := block(x, x * 2)\ndouble call(5) println  // 10\n\n// Multi-argument block\nadd := block(a, b, a + b)\nadd call(3, 4) println  // 7\n\n// No-argument block\ngreet := block(\"Hello!\" println)\ngreet call  // Hello!\n\n// Blocks are objects\ndouble type println  // Block\ndouble proto println  // Block_0x...\n```\n\n## Blocks as Closures\n\nBlocks capture variables from their creation context:\n\n```io\nmakeCounter := method(\n    count := 0\n    block(\n        count = count + 1\n        count\n    )\n)\n\ncounter1 := makeCounter()\ncounter2 := makeCounter()\n\ncounter1 call println  // 1\ncounter1 call println  // 2\ncounter2 call println  // 1 (independent)\ncounter1 call println  // 3\n```\n\nThis is different from many languages where you need special syntax for closures:\n\n```javascript\n// JavaScript\nfunction makeCounter() {\n    let count = 0;\n    return function() {\n        count++;\n        return count;\n    };\n}\n```\n\nIn Io, all blocks are closures automatically.\n\n## The Scope Chain\n\nUnderstanding scope is crucial for blocks:\n\n```io\nx := \"global\"\n\nouter := method(\n    x := \"outer\"\n    \n    inner := block(\n        x println  // What prints?\n    )\n    \n    inner\n)\n\nmyBlock := outer()\nmyBlock call  // \"outer\" - captured from creation context\n\nx = \"changed global\"\nmyBlock call  // Still \"outer\" - closure captures variables, not global\n```\n\n## Methods and self\n\nMethods have access to `self` (the receiver):\n\n```io\nCalculator := Object clone\nCalculator value := 0\n\nCalculator add := method(n,\n    self value = self value + n  // Explicit self\n    value  // Implicit self\n)\n\nCalculator addBlock := block(n,\n    // No automatic self here!\n    // Would need to pass it explicitly\n)\n\ncalc := Calculator clone\ncalc add(5) println  // 5\ncalc add(3) println  // 8\n```\n\n## Block Arguments and Defaults\n\n```io\n// Variable arguments\nsumAll := block(\n    args := call message arguments\n    total := 0\n    args foreach(arg,\n        total = total + call sender doMessage(arg)\n    )\n    total\n)\n\nsumAll call(1, 2, 3, 4, 5) println  // 15\n\n// Default arguments (manual)\ngreetWithDefault := block(name,\n    if(name isNil, name = \"World\")\n    (\"Hello, \" .. name .. \"!\") println\n)\n\ngreetWithDefault call(\"Alice\")  // Hello, Alice!\ngreetWithDefault call()        // Hello, World!\n```\n\n## Higher-Order Functions\n\nBlocks enable functional programming patterns:\n\n```io\n// Functions returning functions\nmakeMultiplier := method(factor,\n    block(x, x * factor)\n)\n\ndouble := makeMultiplier(2)\ntriple := makeMultiplier(3)\n\ndouble call(5) println  // 10\ntriple call(5) println  // 15\n\n// Functions taking functions\ntwice := method(f, x,\n    f call(f call(x))\n)\n\ntwice(block(n, n + 1), 5) println  // 7\n\n// Composition\ncompose := method(f, g,\n    block(x, f call(g call(x)))\n)\n\naddOne := block(x, x + 1)\ndouble := block(x, x * 2)\ndoubleThenAddOne := compose(addOne, double)\n\ndoubleThenAddOne call(5) println  // 11\n```\n\n## Partial Application and Currying\n\n```io\n// Partial application\nadd := block(a, b, a + b)\n\naddFive := block(x, add call(5, x))\naddFive call(3) println  // 8\n\n// Currying\ncurry := method(f,\n    block(a,\n        block(b,\n            f call(a, b)\n        )\n    )\n)\n\ncurriedAdd := curry(add)\nadd5 := curriedAdd call(5)\nadd5 call(3) println  // 8\n\n// More practical example\nformatString := block(template, value,\n    template interpolate(value)\n)\n\ncurriedFormat := curry(formatString)\nerrorFormatter := curriedFormat call(\"Error: #{value}\")\nsuccessFormatter := curriedFormat call(\"Success: #{value}\")\n\nerrorFormatter call(\"File not found\") println  // Error: File not found\nsuccessFormatter call(\"Operation complete\") println  // Success: Operation complete\n```\n\n## Lazy Evaluation with Blocks\n\nBlocks don't evaluate until called, enabling lazy patterns:\n\n```io\n// Lazy if (already built-in, but here's how it works)\nlazyIf := method(condition, trueBlock, falseBlock,\n    if(condition,\n        trueBlock call,\n        falseBlock call\n    )\n)\n\nx := 5\nlazyIf(x > 3,\n    block(\"Greater\" println),\n    block(\"Lesser\" println)\n)\n\n// Lazy infinite sequences\nnaturals := method(start,\n    block(\n        n := start\n        block(\n            current := n\n            n = n + 1\n            current\n        )\n    ) call\n)\n\nseq := naturals(1)\n5 repeat(seq call println)  // 1, 2, 3, 4, 5\n```\n\n## Memoization\n\nUse closures to cache expensive computations:\n\n```io\nmemoize := method(f,\n    cache := Map clone\n    \n    block(\n        args := call message arguments\n        key := args asString\n        \n        if(cache hasKey(key),\n            cache at(key),\n            result := f call(args)\n            cache atPut(key, result)\n            result\n        )\n    )\n)\n\n// Expensive fibonacci\nfib := block(n,\n    if(n \u003c 2, n, fib call(n - 1) + fib call(n - 2))\n)\n\n// Memoized version\nfastFib := memoize(fib)\n\n// Much faster on repeated calls\ntime(fib call(30)) println\ntime(fastFib call(30)) println\n```\n\n## Block Introspection\n\nBlocks are objects you can inspect:\n\n```io\nmyBlock := block(x, y, x + y * 2)\n\n// Inspect structure\nmyBlock argumentNames println  // list(x, y)\nmyBlock code println           // x +(y *(2))\n\n// Modify blocks\nmyBlock setArgumentNames(list(\"a\", \"b\"))\nmyBlock argumentNames println  // list(a, b)\n\n// Create blocks programmatically\ncode := \"a + b\"\nargs := list(\"a\", \"b\")\ndynamicBlock := Block clone setArgumentNames(args) setCode(code)\ndynamicBlock call(3, 4) println  // 7\n```\n\n## Blocks in Data Structures\n\n```io\n// Table of operations\noperations := Map with(\n    \"+\", block(a, b, a + b),\n    \"-\", block(a, b, a - b),\n    \"*\", block(a, b, a * b),\n    \"/\", block(a, b, a / b)\n)\n\ncalculate := method(op, a, b,\n    operations at(op) call(a, b)\n)\n\ncalculate(\"+\", 5, 3) println  // 8\ncalculate(\"*\", 4, 7) println  // 28\n\n// Event handlers\nEventEmitter := Object clone\nEventEmitter init := method(\n    self events := Map clone\n    self\n)\n\nEventEmitter on := method(event, handler,\n    if(events hasKey(event) not,\n        events atPut(event, list())\n    )\n    events at(event) append(handler)\n    self\n)\n\nEventEmitter emit := method(event, data,\n    if(events hasKey(event),\n        events at(event) foreach(handler,\n            handler call(data)\n        )\n    )\n    self\n)\n\n// Usage\nemitter := EventEmitter clone init\nemitter on(\"click\", block(data,\n    (\"Clicked at: \" .. data) println\n))\nemitter on(\"click\", block(data,\n    (\"Another handler: \" .. data) println\n))\n\nemitter emit(\"click\", \"x=10, y=20\")\n// Clicked at: x=10, y=20\n// Another handler: x=10, y=20\n```\n\n## Control Flow with Blocks\n\nCreate custom control structures:\n\n```io\n// Retry logic\nretry := method(times, block,\n    attempts := 0\n    loop(\n        attempts = attempts + 1\n        e := try(result := block call)\n        \n        if(e isNil, return result)\n        if(attempts >= times, Exception raise(e))\n        \n        (\"Attempt \" .. attempts .. \" failed, retrying...\") println\n    )\n)\n\n// Usage\nresult := retry(3, block(\n    if(Random value \u003c 0.7,\n        Exception raise(\"Random failure\"),\n        \"Success!\"\n    )\n))\n\n// While with condition block\nwhileTrue := method(conditionBlock, bodyBlock,\n    while(conditionBlock call, bodyBlock call)\n)\n\ni := 0\nwhileTrue(\n    block(i \u003c 5),\n    block(\n        i println\n        i = i + 1\n    )\n)\n```\n\n## Performance Considerations\n\n```io\n// Method vs Block performance\nobj := Object clone\nobj value := 10\n\nobj method1 := method(x, x + value)\nobj block1 := block(x, x + 10)\n\n// Methods are slightly faster for object operations\ntime(100000 repeat(obj method1(5)))\ntime(100000 repeat(obj block1 call(5)))\n\n// But blocks are better for functional patterns\nnumbers := list(1, 2, 3, 4, 5)\ntime(numbers map(x, x * 2))  // Using block syntax\n```\n\n## Advanced Patterns\n\n### Continuation-Style Programming\n\n```io\n// Continuation passing style\nfactorial := method(n, continuation,\n    if(n \u003c= 1,\n        continuation call(1),\n        factorial(n - 1, block(result,\n            continuation call(n * result)\n        ))\n    )\n)\n\nfactorial(5, block(result, result println))  // 120\n```\n\n### Monadic Patterns\n\n```io\n// Maybe monad\nMaybe := Object clone\nMaybe Nothing := Maybe clone\nMaybe Just := method(value,\n    m := Maybe clone\n    m value := value\n    m isNothing := false\n    m\n)\nMaybe Nothing isNothing := true\n\nMaybe bind := method(f,\n    if(isNothing, Maybe Nothing, f call(value))\n)\n\nMaybe map := method(f,\n    if(isNothing, \n        Maybe Nothing,\n        Maybe Just(f call(value))\n    )\n)\n\n// Usage\nresult := Maybe Just(5) \\\n    map(block(x, x * 2)) \\\n    bind(block(x, \n        if(x > 5, \n            Maybe Just(x), \n            Maybe Nothing)\n    )) \\\n    map(block(x, x + 1))\n\nif(result isNothing not,\n    result value println  // 11\n)\n```\n\n### Transducers\n\n```io\n// Composable transformations\nmapping := method(f,\n    method(reducer,\n        block(acc, item,\n            reducer call(acc, f call(item))\n        )\n    )\n)\n\nfiltering := method(pred,\n    method(reducer,\n        block(acc, item,\n            if(pred call(item),\n                reducer call(acc, item),\n                acc\n            )\n        )\n    )\n)\n\n// Compose transducers\ntransduce := method(xform, reducer, init, coll,\n    xreducer := xform call(reducer)\n    coll foreach(item,\n        init = xreducer call(init, item)\n    )\n    init\n)\n\n// Usage\nxform := filtering(block(x, x % 2 == 0)) call(\n    mapping(block(x, x * 2))\n)\n\nresult := transduce(xform, \n    block(acc, x, acc + x),\n    0,\n    list(1, 2, 3, 4, 5, 6)\n)\nresult println  // 24 (2*2 + 4*2 + 6*2)\n```\n\n## Common Pitfalls\n\n### Variable Capture\n\n```io\n// PROBLEM: Loop variable capture\nhandlers := list()\nfor(i, 1, 3,\n    handlers append(block(i println))\n)\n\nhandlers foreach(h, h call)  // All print 3!\n\n// SOLUTION: Create new scope\nhandlers := list()\nfor(i, 1, 3,\n    handlers append(\n        method(n, block(n println)) call(i)\n    )\n)\n\nhandlers foreach(h, h call)  // 1, 2, 3\n```\n\n### Memory Leaks with Closures\n\n```io\n// PROBLEM: Closure keeps large object alive\nmakeClosure := method(\n    hugeData := List clone\n    10000 repeat(hugeData append(Random value))\n    \n    block(x, x * 2)  // Doesn't use hugeData but keeps it alive!\n)\n\n// SOLUTION: Be explicit about captured variables\nmakeClosure := method(\n    hugeData := List clone\n    10000 repeat(hugeData append(Random value))\n    processedValue := hugeData size  // Extract what you need\n    hugeData = nil  // Release reference\n    \n    block(x, x * processedValue)\n)\n```\n\n## Exercises\n\n1. **Promise Implementation**: Create a Promise/Future system using blocks for async operations.\n\n2. **Stream Processing**: Build a lazy stream processor with map, filter, and reduce.\n\n3. **Function Decorator**: Implement decorators for logging, timing, and caching.\n\n4. **Parser Combinators**: Create a simple parser combinator library using blocks.\n\n5. **Reactive System**: Build a simple FRP (Functional Reactive Programming) system.\n\n## Real-World Example: Pipeline Builder\n\n```io\nPipeline := Object clone\nPipeline init := method(\n    self steps := list()\n    self\n)\n\nPipeline add := method(step,\n    steps append(step)\n    self\n)\n\nPipeline map := method(f,\n    self add(block(data,\n        data map(f)\n    ))\n)\n\nPipeline filter := method(pred,\n    self add(block(data,\n        data select(pred)\n    ))\n)\n\nPipeline tap := method(f,\n    self add(block(data,\n        f call(data)\n        data\n    ))\n)\n\nPipeline run := method(input,\n    result := input\n    steps foreach(step,\n        result = step call(result)\n    )\n    result\n)\n\n// Usage\npipeline := Pipeline clone init \\\n    filter(block(x, x % 2 == 0)) \\\n    map(block(x, x * x)) \\\n    tap(block(data, (\"After squaring: \" .. data) println)) \\\n    filter(block(x, x > 10)) \\\n    map(block(x, x asString))\n\nresult := pipeline run(list(1, 2, 3, 4, 5, 6))\n// After squaring: list(4, 16, 36)\nresult println  // list(\"16\", \"36\")\n```\n\n## Conclusion\n\nBlocks and closures are fundamental to Io's expressiveness. They're not just anonymous functions—they're first-class objects that capture context, enable functional programming, and allow you to extend the language with new control structures.\n\nThe distinction between blocks (isolated scope) and methods (shared scope with receiver) provides flexibility in how you structure code. Closures emerge naturally from Io's scope rules, making complex patterns like memoization, continuations, and higher-order functions straightforward to implement.\n\nUnderstanding blocks deeply unlocks Io's full potential, enabling you to write code that's both powerful and elegant.\n"}}</script>
+</body>
+</html>

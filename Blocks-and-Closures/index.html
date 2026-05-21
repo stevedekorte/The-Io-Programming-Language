@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="stylesheet" href="../colvmn/style.css">
+<title>Blocks and Closures – Io</title>
+  <link rel="alternate" type="text/plain" title="llms.txt" href="/llms.txt">
+  <meta name="description" content="First-class code as objects that capture their lexical environment.">
+</head>
+<body>
+<div class="page loaded"><div class="header"><div><h1>Blocks and Closures</h1><a class="back-link" href="../index.html">&larr; The Io Programming Language</a></div><a class="brand" href="../index.html">Io</a></div><p class="intro">First-class code as objects that capture their lexical environment.</p><nav class="toc"><ul><li><a href="#understanding-blocks-and-methods">Understanding Blocks and Methods</a></li><li><a href="#creating-and-calling-blocks">Creating and Calling Blocks</a></li><li><a href="#blocks-as-closures">Blocks as Closures</a></li><li><a href="#the-scope-chain">The Scope Chain</a></li><li><a href="#methods-and-self">Methods and self</a></li><li><a href="#block-arguments-and-defaults">Block Arguments and Defaults</a></li><li><a href="#higher-order-functions">Higher-Order Functions</a></li><li><a href="#partial-application-and-currying">Partial Application and Currying</a></li><li><a href="#lazy-evaluation-with-blocks">Lazy Evaluation with Blocks</a></li><li><a href="#memoization">Memoization</a></li><li><a href="#block-introspection">Block Introspection</a></li><li><a href="#blocks-in-data-structures">Blocks in Data Structures</a></li><li><a href="#control-flow-with-blocks">Control Flow with Blocks</a></li><li><a href="#performance-considerations">Performance Considerations</a></li><li><a href="#advanced-patterns">Advanced Patterns</a></li><li><a href="#common-pitfalls">Common Pitfalls</a></li><li><a href="#exercises">Exercises</a></li><li><a href="#real-world-example-pipeline-builder">Real-World Example: Pipeline Builder</a></li><li><a href="#conclusion">Conclusion</a></li></ul></nav><div class="section"><div class="section-body"><p>Blocks in Io are first-class objects representing unevaluated code. They capture their creation context, making them closures. This chapter explores blocks, methods, closures, and how they enable functional programming patterns in Io.</p></div></div><h2 id="understanding-blocks-and-methods">Understanding Blocks and Methods</h2><div class="section"><div class="section-body"><p>In Io, <code>block</code> and <code>method</code> are similar but have a crucial difference:</p><pre><code>// Block - creates its own scope
+blk := block(x, x * 2)
+blk call(5) println  // 10
+
+// Method - shares scope with receiver
+obj := Object clone
+obj value := 10
+obj meth := method(x, x * value)  // Can access 'value'
+obj blk := block(x, x * value)    // Error when called - no 'value' in block scope
+
+obj meth(5) println  // 50
+// obj blk call(5)  // Exception: value not found</code></pre><p>The key difference:</p><ul><li><strong>Methods</strong> have access to <code>self</code> and the receiver's slots</li><li><strong>Blocks</strong> create their own scope and don't have automatic access to <code>self</code></li></ul></div></div><h2 id="creating-and-calling-blocks">Creating and Calling Blocks</h2><div class="section"><div class="section-body"><pre><code>// Simple block
+double := block(x, x * 2)
+double call(5) println  // 10
+
+// Multi-argument block
+add := block(a, b, a + b)
+add call(3, 4) println  // 7
+
+// No-argument block
+greet := block("Hello!" println)
+greet call  // Hello!
+
+// Blocks are objects
+double type println  // Block
+double proto println  // Block_0x...</code></pre></div></div><h2 id="blocks-as-closures">Blocks as Closures</h2><div class="section"><div class="section-body"><p>Blocks capture variables from their creation context:</p><pre><code>makeCounter := method(
+    count := 0
+    block(
+        count = count + 1
+        count
+    )
+)
+
+counter1 := makeCounter()
+counter2 := makeCounter()
+
+counter1 call println  // 1
+counter1 call println  // 2
+counter2 call println  // 1 (independent)
+counter1 call println  // 3</code></pre><p>This is different from many languages where you need special syntax for closures:</p><pre><code>// JavaScript
+function makeCounter() {
+    let count = 0;
+    return function() {
+        count++;
+        return count;
+    };
+}</code></pre><p>In Io, all blocks are closures automatically.</p></div></div><h2 id="the-scope-chain">The Scope Chain</h2><div class="section"><div class="section-body"><p>Understanding scope is crucial for blocks:</p><pre><code>x := "global"
+
+outer := method(
+    x := "outer"
+    
+    inner := block(
+        x println  // What prints?
+    )
+    
+    inner
+)
+
+myBlock := outer()
+myBlock call  // "outer" - captured from creation context
+
+x = "changed global"
+myBlock call  // Still "outer" - closure captures variables, not global</code></pre></div></div><h2 id="methods-and-self">Methods and self</h2><div class="section"><div class="section-body"><p>Methods have access to <code>self</code> (the receiver):</p><pre><code>Calculator := Object clone
+Calculator value := 0
+
+Calculator add := method(n,
+    self value = self value + n  // Explicit self
+    value  // Implicit self
+)
+
+Calculator addBlock := block(n,
+    // No automatic self here!
+    // Would need to pass it explicitly
+)
+
+calc := Calculator clone
+calc add(5) println  // 5
+calc add(3) println  // 8</code></pre></div></div><h2 id="block-arguments-and-defaults">Block Arguments and Defaults</h2><div class="section"><div class="section-body"><pre><code>// Variable arguments
+sumAll := block(
+    args := call message arguments
+    total := 0
+    args foreach(arg,
+        total = total + call sender doMessage(arg)
+    )
+    total
+)
+
+sumAll call(1, 2, 3, 4, 5) println  // 15
+
+// Default arguments (manual)
+greetWithDefault := block(name,
+    if(name isNil, name = "World")
+    ("Hello, " .. name .. "!") println
+)
+
+greetWithDefault call("Alice")  // Hello, Alice!
+greetWithDefault call()        // Hello, World!</code></pre></div></div><h2 id="higher-order-functions">Higher-Order Functions</h2><div class="section"><div class="section-body"><p>Blocks enable functional programming patterns:</p><pre><code>// Functions returning functions
+makeMultiplier := method(factor,
+    block(x, x * factor)
+)
+
+double := makeMultiplier(2)
+triple := makeMultiplier(3)
+
+double call(5) println  // 10
+triple call(5) println  // 15
+
+// Functions taking functions
+twice := method(f, x,
+    f call(f call(x))
+)
+
+twice(block(n, n + 1), 5) println  // 7
+
+// Composition
+compose := method(f, g,
+    block(x, f call(g call(x)))
+)
+
+addOne := block(x, x + 1)
+double := block(x, x * 2)
+doubleThenAddOne := compose(addOne, double)
+
+doubleThenAddOne call(5) println  // 11</code></pre></div></div><h2 id="partial-application-and-currying">Partial Application and Currying</h2><div class="section"><div class="section-body"><pre><code>// Partial application
+add := block(a, b, a + b)
+
+addFive := block(x, add call(5, x))
+addFive call(3) println  // 8
+
+// Currying
+curry := method(f,
+    block(a,
+        block(b,
+            f call(a, b)
+        )
+    )
+)
+
+curriedAdd := curry(add)
+add5 := curriedAdd call(5)
+add5 call(3) println  // 8
+
+// More practical example
+formatString := block(template, value,
+    template interpolate(value)
+)
+
+curriedFormat := curry(formatString)
+errorFormatter := curriedFormat call("Error: #{value}")
+successFormatter := curriedFormat call("Success: #{value}")
+
+errorFormatter call("File not found") println  // Error: File not found
+successFormatter call("Operation complete") println  // Success: Operation complete</code></pre></div></div><h2 id="lazy-evaluation-with-blocks">Lazy Evaluation with Blocks</h2><div class="section"><div class="section-body"><p>Blocks don't evaluate until called, enabling lazy patterns:</p><pre><code>// Lazy if (already built-in, but here's how it works)
+lazyIf := method(condition, trueBlock, falseBlock,
+    if(condition,
+        trueBlock call,
+        falseBlock call
+    )
+)
+
+x := 5
+lazyIf(x &gt; 3,
+    block("Greater" println),
+    block("Lesser" println)
+)
+
+// Lazy infinite sequences
+naturals := method(start,
+    block(
+        n := start
+        block(
+            current := n
+            n = n + 1
+            current
+        )
+    ) call
+)
+
+seq := naturals(1)
+5 repeat(seq call println)  // 1, 2, 3, 4, 5</code></pre></div></div><h2 id="memoization">Memoization</h2><div class="section"><div class="section-body"><p>Use closures to cache expensive computations:</p><pre><code>memoize := method(f,
+    cache := Map clone
+    
+    block(
+        args := call message arguments
+        key := args asString
+        
+        if(cache hasKey(key),
+            cache at(key),
+            result := f call(args)
+            cache atPut(key, result)
+            result
+        )
+    )
+)
+
+// Expensive fibonacci
+fib := block(n,
+    if(n &lt; 2, n, fib call(n - 1) + fib call(n - 2))
+)
+
+// Memoized version
+fastFib := memoize(fib)
+
+// Much faster on repeated calls
+time(fib call(30)) println
+time(fastFib call(30)) println</code></pre></div></div><h2 id="block-introspection">Block Introspection</h2><div class="section"><div class="section-body"><p>Blocks are objects you can inspect:</p><pre><code>myBlock := block(x, y, x + y * 2)
+
+// Inspect structure
+myBlock argumentNames println  // list(x, y)
+myBlock code println           // x +(y *(2))
+
+// Modify blocks
+myBlock setArgumentNames(list("a", "b"))
+myBlock argumentNames println  // list(a, b)
+
+// Create blocks programmatically
+code := "a + b"
+args := list("a", "b")
+dynamicBlock := Block clone setArgumentNames(args) setCode(code)
+dynamicBlock call(3, 4) println  // 7</code></pre></div></div><h2 id="blocks-in-data-structures">Blocks in Data Structures</h2><div class="section"><div class="section-body"><pre><code>// Table of operations
+operations := Map with(
+    "+", block(a, b, a + b),
+    "-", block(a, b, a - b),
+    "*", block(a, b, a * b),
+    "/", block(a, b, a / b)
+)
+
+calculate := method(op, a, b,
+    operations at(op) call(a, b)
+)
+
+calculate("+", 5, 3) println  // 8
+calculate("*", 4, 7) println  // 28
+
+// Event handlers
+EventEmitter := Object clone
+EventEmitter init := method(
+    self events := Map clone
+    self
+)
+
+EventEmitter on := method(event, handler,
+    if(events hasKey(event) not,
+        events atPut(event, list())
+    )
+    events at(event) append(handler)
+    self
+)
+
+EventEmitter emit := method(event, data,
+    if(events hasKey(event),
+        events at(event) foreach(handler,
+            handler call(data)
+        )
+    )
+    self
+)
+
+// Usage
+emitter := EventEmitter clone init
+emitter on("click", block(data,
+    ("Clicked at: " .. data) println
+))
+emitter on("click", block(data,
+    ("Another handler: " .. data) println
+))
+
+emitter emit("click", "x=10, y=20")
+// Clicked at: x=10, y=20
+// Another handler: x=10, y=20</code></pre></div></div><h2 id="control-flow-with-blocks">Control Flow with Blocks</h2><div class="section"><div class="section-body"><p>Create custom control structures:</p><pre><code>// Retry logic
+retry := method(times, block,
+    attempts := 0
+    loop(
+        attempts = attempts + 1
+        e := try(result := block call)
+        
+        if(e isNil, return result)
+        if(attempts &gt;= times, Exception raise(e))
+        
+        ("Attempt " .. attempts .. " failed, retrying...") println
+    )
+)
+
+// Usage
+result := retry(3, block(
+    if(Random value &lt; 0.7,
+        Exception raise("Random failure"),
+        "Success!"
+    )
+))
+
+// While with condition block
+whileTrue := method(conditionBlock, bodyBlock,
+    while(conditionBlock call, bodyBlock call)
+)
+
+i := 0
+whileTrue(
+    block(i &lt; 5),
+    block(
+        i println
+        i = i + 1
+    )
+)</code></pre></div></div><h2 id="performance-considerations">Performance Considerations</h2><div class="section"><div class="section-body"><pre><code>// Method vs Block performance
+obj := Object clone
+obj value := 10
+
+obj method1 := method(x, x + value)
+obj block1 := block(x, x + 10)
+
+// Methods are slightly faster for object operations
+time(100000 repeat(obj method1(5)))
+time(100000 repeat(obj block1 call(5)))
+
+// But blocks are better for functional patterns
+numbers := list(1, 2, 3, 4, 5)
+time(numbers map(x, x * 2))  // Using block syntax</code></pre></div></div><h2 id="advanced-patterns">Advanced Patterns</h2><div class="section"><div class="section-body"><h3 id="continuation-style-programming">Continuation-Style Programming</h3><pre><code>// Continuation passing style
+factorial := method(n, continuation,
+    if(n &lt;= 1,
+        continuation call(1),
+        factorial(n - 1, block(result,
+            continuation call(n * result)
+        ))
+    )
+)
+
+factorial(5, block(result, result println))  // 120</code></pre><h3 id="monadic-patterns">Monadic Patterns</h3><pre><code>// Maybe monad
+Maybe := Object clone
+Maybe Nothing := Maybe clone
+Maybe Just := method(value,
+    m := Maybe clone
+    m value := value
+    m isNothing := false
+    m
+)
+Maybe Nothing isNothing := true
+
+Maybe bind := method(f,
+    if(isNothing, Maybe Nothing, f call(value))
+)
+
+Maybe map := method(f,
+    if(isNothing, 
+        Maybe Nothing,
+        Maybe Just(f call(value))
+    )
+)
+
+// Usage
+result := Maybe Just(5) \
+    map(block(x, x * 2)) \
+    bind(block(x, 
+        if(x &gt; 5, 
+            Maybe Just(x), 
+            Maybe Nothing)
+    )) \
+    map(block(x, x + 1))
+
+if(result isNothing not,
+    result value println  // 11
+)</code></pre><h3 id="transducers">Transducers</h3><pre><code>// Composable transformations
+mapping := method(f,
+    method(reducer,
+        block(acc, item,
+            reducer call(acc, f call(item))
+        )
+    )
+)
+
+filtering := method(pred,
+    method(reducer,
+        block(acc, item,
+            if(pred call(item),
+                reducer call(acc, item),
+                acc
+            )
+        )
+    )
+)
+
+// Compose transducers
+transduce := method(xform, reducer, init, coll,
+    xreducer := xform call(reducer)
+    coll foreach(item,
+        init = xreducer call(init, item)
+    )
+    init
+)
+
+// Usage
+xform := filtering(block(x, x % 2 == 0)) call(
+    mapping(block(x, x * 2))
+)
+
+result := transduce(xform, 
+    block(acc, x, acc + x),
+    0,
+    list(1, 2, 3, 4, 5, 6)
+)
+result println  // 24 (2*2 + 4*2 + 6*2)</code></pre></div></div><h2 id="common-pitfalls">Common Pitfalls</h2><div class="section"><div class="section-body"><h3 id="variable-capture">Variable Capture</h3><pre><code>// PROBLEM: Loop variable capture
+handlers := list()
+for(i, 1, 3,
+    handlers append(block(i println))
+)
+
+handlers foreach(h, h call)  // All print 3!
+
+// SOLUTION: Create new scope
+handlers := list()
+for(i, 1, 3,
+    handlers append(
+        method(n, block(n println)) call(i)
+    )
+)
+
+handlers foreach(h, h call)  // 1, 2, 3</code></pre><h3 id="memory-leaks-with-closures">Memory Leaks with Closures</h3><pre><code>// PROBLEM: Closure keeps large object alive
+makeClosure := method(
+    hugeData := List clone
+    10000 repeat(hugeData append(Random value))
+    
+    block(x, x * 2)  // Doesn't use hugeData but keeps it alive!
+)
+
+// SOLUTION: Be explicit about captured variables
+makeClosure := method(
+    hugeData := List clone
+    10000 repeat(hugeData append(Random value))
+    processedValue := hugeData size  // Extract what you need
+    hugeData = nil  // Release reference
+    
+    block(x, x * processedValue)
+)</code></pre></div></div><h2 id="exercises">Exercises</h2><div class="section"><div class="section-body"><ol><li><strong>Promise Implementation</strong>: Create a Promise/Future system using blocks for async operations.</li><li><strong>Stream Processing</strong>: Build a lazy stream processor with map, filter, and reduce.</li><li><strong>Function Decorator</strong>: Implement decorators for logging, timing, and caching.</li><li><strong>Parser Combinators</strong>: Create a simple parser combinator library using blocks.</li><li><strong>Reactive System</strong>: Build a simple FRP (Functional Reactive Programming) system.</li></ol></div></div><h2 id="real-world-example-pipeline-builder">Real-World Example: Pipeline Builder</h2><div class="section"><div class="section-body"><pre><code>Pipeline := Object clone
+Pipeline init := method(
+    self steps := list()
+    self
+)
+
+Pipeline add := method(step,
+    steps append(step)
+    self
+)
+
+Pipeline map := method(f,
+    self add(block(data,
+        data map(f)
+    ))
+)
+
+Pipeline filter := method(pred,
+    self add(block(data,
+        data select(pred)
+    ))
+)
+
+Pipeline tap := method(f,
+    self add(block(data,
+        f call(data)
+        data
+    ))
+)
+
+Pipeline run := method(input,
+    result := input
+    steps foreach(step,
+        result = step call(result)
+    )
+    result
+)
+
+// Usage
+pipeline := Pipeline clone init \
+    filter(block(x, x % 2 == 0)) \
+    map(block(x, x * x)) \
+    tap(block(data, ("After squaring: " .. data) println)) \
+    filter(block(x, x &gt; 10)) \
+    map(block(x, x asString))
+
+result := pipeline run(list(1, 2, 3, 4, 5, 6))
+// After squaring: list(4, 16, 36)
+result println  // list("16", "36")</code></pre></div></div><h2 id="conclusion">Conclusion</h2><div class="section"><div class="section-body"><p>Blocks and closures are fundamental to Io's expressiveness. They're not just anonymous functions&mdash;they're first-class objects that capture context, enable functional programming, and allow you to extend the language with new control structures.</p><p>The distinction between blocks (isolated scope) and methods (shared scope with receiver) provides flexibility in how you structure code. Closures emerge naturally from Io's scope rules, making complex patterns like memoization, continuations, and higher-order functions straightforward to implement.</p><p>Understanding blocks deeply unlocks Io's full potential, enabling you to write code that's both powerful and elegant.</p></div></div><div class="page-footer"><a class="next-link" href="../Exceptions/index.html">Exceptions &rarr;</a></div></div>
+<script src="../colvmn/layout/bundle.js" defer></script>
+  <script type="application/json" id="colvmn-prefetch">{"./_index.json":{"ok":false,"status":404},"./_index.md":{"ok":true,"status":200,"content":"---\ntitle: Blocks and Closures\ntopTitle: Io\nsubtitle: \"First-class code as objects that capture their lexical environment.\"\nnextSectionLink: true\n---\n\nBlocks in Io are first-class objects representing unevaluated code. They capture their creation context, making them closures. This chapter explores blocks, methods, closures, and how they enable functional programming patterns in Io.\n\n## Understanding Blocks and Methods\n\nIn Io, `block` and `method` are similar but have a crucial difference:\n\n```io\n// Block - creates its own scope\nblk := block(x, x * 2)\nblk call(5) println  // 10\n\n// Method - shares scope with receiver\nobj := Object clone\nobj value := 10\nobj meth := method(x, x * value)  // Can access 'value'\nobj blk := block(x, x * value)    // Error when called - no 'value' in block scope\n\nobj meth(5) println  // 50\n// obj blk call(5)  // Exception: value not found\n```\n\nThe key difference:\n- **Methods** have access to `self` and the receiver's slots\n- **Blocks** create their own scope and don't have automatic access to `self`\n\n## Creating and Calling Blocks\n\n```io\n// Simple block\ndouble := block(x, x * 2)\ndouble call(5) println  // 10\n\n// Multi-argument block\nadd := block(a, b, a + b)\nadd call(3, 4) println  // 7\n\n// No-argument block\ngreet := block(\"Hello!\" println)\ngreet call  // Hello!\n\n// Blocks are objects\ndouble type println  // Block\ndouble proto println  // Block_0x...\n```\n\n## Blocks as Closures\n\nBlocks capture variables from their creation context:\n\n```io\nmakeCounter := method(\n    count := 0\n    block(\n        count = count + 1\n        count\n    )\n)\n\ncounter1 := makeCounter()\ncounter2 := makeCounter()\n\ncounter1 call println  // 1\ncounter1 call println  // 2\ncounter2 call println  // 1 (independent)\ncounter1 call println  // 3\n```\n\nThis is different from many languages where you need special syntax for closures:\n\n```javascript\n// JavaScript\nfunction makeCounter() {\n    let count = 0;\n    return function() {\n        count++;\n        return count;\n    };\n}\n```\n\nIn Io, all blocks are closures automatically.\n\n## The Scope Chain\n\nUnderstanding scope is crucial for blocks:\n\n```io\nx := \"global\"\n\nouter := method(\n    x := \"outer\"\n    \n    inner := block(\n        x println  // What prints?\n    )\n    \n    inner\n)\n\nmyBlock := outer()\nmyBlock call  // \"outer\" - captured from creation context\n\nx = \"changed global\"\nmyBlock call  // Still \"outer\" - closure captures variables, not global\n```\n\n## Methods and self\n\nMethods have access to `self` (the receiver):\n\n```io\nCalculator := Object clone\nCalculator value := 0\n\nCalculator add := method(n,\n    self value = self value + n  // Explicit self\n    value  // Implicit self\n)\n\nCalculator addBlock := block(n,\n    // No automatic self here!\n    // Would need to pass it explicitly\n)\n\ncalc := Calculator clone\ncalc add(5) println  // 5\ncalc add(3) println  // 8\n```\n\n## Block Arguments and Defaults\n\n```io\n// Variable arguments\nsumAll := block(\n    args := call message arguments\n    total := 0\n    args foreach(arg,\n        total = total + call sender doMessage(arg)\n    )\n    total\n)\n\nsumAll call(1, 2, 3, 4, 5) println  // 15\n\n// Default arguments (manual)\ngreetWithDefault := block(name,\n    if(name isNil, name = \"World\")\n    (\"Hello, \" .. name .. \"!\") println\n)\n\ngreetWithDefault call(\"Alice\")  // Hello, Alice!\ngreetWithDefault call()        // Hello, World!\n```\n\n## Higher-Order Functions\n\nBlocks enable functional programming patterns:\n\n```io\n// Functions returning functions\nmakeMultiplier := method(factor,\n    block(x, x * factor)\n)\n\ndouble := makeMultiplier(2)\ntriple := makeMultiplier(3)\n\ndouble call(5) println  // 10\ntriple call(5) println  // 15\n\n// Functions taking functions\ntwice := method(f, x,\n    f call(f call(x))\n)\n\ntwice(block(n, n + 1), 5) println  // 7\n\n// Composition\ncompose := method(f, g,\n    block(x, f call(g call(x)))\n)\n\naddOne := block(x, x + 1)\ndouble := block(x, x * 2)\ndoubleThenAddOne := compose(addOne, double)\n\ndoubleThenAddOne call(5) println  // 11\n```\n\n## Partial Application and Currying\n\n```io\n// Partial application\nadd := block(a, b, a + b)\n\naddFive := block(x, add call(5, x))\naddFive call(3) println  // 8\n\n// Currying\ncurry := method(f,\n    block(a,\n        block(b,\n            f call(a, b)\n        )\n    )\n)\n\ncurriedAdd := curry(add)\nadd5 := curriedAdd call(5)\nadd5 call(3) println  // 8\n\n// More practical example\nformatString := block(template, value,\n    template interpolate(value)\n)\n\ncurriedFormat := curry(formatString)\nerrorFormatter := curriedFormat call(\"Error: #{value}\")\nsuccessFormatter := curriedFormat call(\"Success: #{value}\")\n\nerrorFormatter call(\"File not found\") println  // Error: File not found\nsuccessFormatter call(\"Operation complete\") println  // Success: Operation complete\n```\n\n## Lazy Evaluation with Blocks\n\nBlocks don't evaluate until called, enabling lazy patterns:\n\n```io\n// Lazy if (already built-in, but here's how it works)\nlazyIf := method(condition, trueBlock, falseBlock,\n    if(condition,\n        trueBlock call,\n        falseBlock call\n    )\n)\n\nx := 5\nlazyIf(x > 3,\n    block(\"Greater\" println),\n    block(\"Lesser\" println)\n)\n\n// Lazy infinite sequences\nnaturals := method(start,\n    block(\n        n := start\n        block(\n            current := n\n            n = n + 1\n            current\n        )\n    ) call\n)\n\nseq := naturals(1)\n5 repeat(seq call println)  // 1, 2, 3, 4, 5\n```\n\n## Memoization\n\nUse closures to cache expensive computations:\n\n```io\nmemoize := method(f,\n    cache := Map clone\n    \n    block(\n        args := call message arguments\n        key := args asString\n        \n        if(cache hasKey(key),\n            cache at(key),\n            result := f call(args)\n            cache atPut(key, result)\n            result\n        )\n    )\n)\n\n// Expensive fibonacci\nfib := block(n,\n    if(n \u003c 2, n, fib call(n - 1) + fib call(n - 2))\n)\n\n// Memoized version\nfastFib := memoize(fib)\n\n// Much faster on repeated calls\ntime(fib call(30)) println\ntime(fastFib call(30)) println\n```\n\n## Block Introspection\n\nBlocks are objects you can inspect:\n\n```io\nmyBlock := block(x, y, x + y * 2)\n\n// Inspect structure\nmyBlock argumentNames println  // list(x, y)\nmyBlock code println           // x +(y *(2))\n\n// Modify blocks\nmyBlock setArgumentNames(list(\"a\", \"b\"))\nmyBlock argumentNames println  // list(a, b)\n\n// Create blocks programmatically\ncode := \"a + b\"\nargs := list(\"a\", \"b\")\ndynamicBlock := Block clone setArgumentNames(args) setCode(code)\ndynamicBlock call(3, 4) println  // 7\n```\n\n## Blocks in Data Structures\n\n```io\n// Table of operations\noperations := Map with(\n    \"+\", block(a, b, a + b),\n    \"-\", block(a, b, a - b),\n    \"*\", block(a, b, a * b),\n    \"/\", block(a, b, a / b)\n)\n\ncalculate := method(op, a, b,\n    operations at(op) call(a, b)\n)\n\ncalculate(\"+\", 5, 3) println  // 8\ncalculate(\"*\", 4, 7) println  // 28\n\n// Event handlers\nEventEmitter := Object clone\nEventEmitter init := method(\n    self events := Map clone\n    self\n)\n\nEventEmitter on := method(event, handler,\n    if(events hasKey(event) not,\n        events atPut(event, list())\n    )\n    events at(event) append(handler)\n    self\n)\n\nEventEmitter emit := method(event, data,\n    if(events hasKey(event),\n        events at(event) foreach(handler,\n            handler call(data)\n        )\n    )\n    self\n)\n\n// Usage\nemitter := EventEmitter clone init\nemitter on(\"click\", block(data,\n    (\"Clicked at: \" .. data) println\n))\nemitter on(\"click\", block(data,\n    (\"Another handler: \" .. data) println\n))\n\nemitter emit(\"click\", \"x=10, y=20\")\n// Clicked at: x=10, y=20\n// Another handler: x=10, y=20\n```\n\n## Control Flow with Blocks\n\nCreate custom control structures:\n\n```io\n// Retry logic\nretry := method(times, block,\n    attempts := 0\n    loop(\n        attempts = attempts + 1\n        e := try(result := block call)\n        \n        if(e isNil, return result)\n        if(attempts >= times, Exception raise(e))\n        \n        (\"Attempt \" .. attempts .. \" failed, retrying...\") println\n    )\n)\n\n// Usage\nresult := retry(3, block(\n    if(Random value \u003c 0.7,\n        Exception raise(\"Random failure\"),\n        \"Success!\"\n    )\n))\n\n// While with condition block\nwhileTrue := method(conditionBlock, bodyBlock,\n    while(conditionBlock call, bodyBlock call)\n)\n\ni := 0\nwhileTrue(\n    block(i \u003c 5),\n    block(\n        i println\n        i = i + 1\n    )\n)\n```\n\n## Performance Considerations\n\n```io\n// Method vs Block performance\nobj := Object clone\nobj value := 10\n\nobj method1 := method(x, x + value)\nobj block1 := block(x, x + 10)\n\n// Methods are slightly faster for object operations\ntime(100000 repeat(obj method1(5)))\ntime(100000 repeat(obj block1 call(5)))\n\n// But blocks are better for functional patterns\nnumbers := list(1, 2, 3, 4, 5)\ntime(numbers map(x, x * 2))  // Using block syntax\n```\n\n## Advanced Patterns\n\n### Continuation-Style Programming\n\n```io\n// Continuation passing style\nfactorial := method(n, continuation,\n    if(n \u003c= 1,\n        continuation call(1),\n        factorial(n - 1, block(result,\n            continuation call(n * result)\n        ))\n    )\n)\n\nfactorial(5, block(result, result println))  // 120\n```\n\n### Monadic Patterns\n\n```io\n// Maybe monad\nMaybe := Object clone\nMaybe Nothing := Maybe clone\nMaybe Just := method(value,\n    m := Maybe clone\n    m value := value\n    m isNothing := false\n    m\n)\nMaybe Nothing isNothing := true\n\nMaybe bind := method(f,\n    if(isNothing, Maybe Nothing, f call(value))\n)\n\nMaybe map := method(f,\n    if(isNothing, \n        Maybe Nothing,\n        Maybe Just(f call(value))\n    )\n)\n\n// Usage\nresult := Maybe Just(5) \\\n    map(block(x, x * 2)) \\\n    bind(block(x, \n        if(x > 5, \n            Maybe Just(x), \n            Maybe Nothing)\n    )) \\\n    map(block(x, x + 1))\n\nif(result isNothing not,\n    result value println  // 11\n)\n```\n\n### Transducers\n\n```io\n// Composable transformations\nmapping := method(f,\n    method(reducer,\n        block(acc, item,\n            reducer call(acc, f call(item))\n        )\n    )\n)\n\nfiltering := method(pred,\n    method(reducer,\n        block(acc, item,\n            if(pred call(item),\n                reducer call(acc, item),\n                acc\n            )\n        )\n    )\n)\n\n// Compose transducers\ntransduce := method(xform, reducer, init, coll,\n    xreducer := xform call(reducer)\n    coll foreach(item,\n        init = xreducer call(init, item)\n    )\n    init\n)\n\n// Usage\nxform := filtering(block(x, x % 2 == 0)) call(\n    mapping(block(x, x * 2))\n)\n\nresult := transduce(xform, \n    block(acc, x, acc + x),\n    0,\n    list(1, 2, 3, 4, 5, 6)\n)\nresult println  // 24 (2*2 + 4*2 + 6*2)\n```\n\n## Common Pitfalls\n\n### Variable Capture\n\n```io\n// PROBLEM: Loop variable capture\nhandlers := list()\nfor(i, 1, 3,\n    handlers append(block(i println))\n)\n\nhandlers foreach(h, h call)  // All print 3!\n\n// SOLUTION: Create new scope\nhandlers := list()\nfor(i, 1, 3,\n    handlers append(\n        method(n, block(n println)) call(i)\n    )\n)\n\nhandlers foreach(h, h call)  // 1, 2, 3\n```\n\n### Memory Leaks with Closures\n\n```io\n// PROBLEM: Closure keeps large object alive\nmakeClosure := method(\n    hugeData := List clone\n    10000 repeat(hugeData append(Random value))\n    \n    block(x, x * 2)  // Doesn't use hugeData but keeps it alive!\n)\n\n// SOLUTION: Be explicit about captured variables\nmakeClosure := method(\n    hugeData := List clone\n    10000 repeat(hugeData append(Random value))\n    processedValue := hugeData size  // Extract what you need\n    hugeData = nil  // Release reference\n    \n    block(x, x * processedValue)\n)\n```\n\n## Exercises\n\n1. **Promise Implementation**: Create a Promise/Future system using blocks for async operations.\n\n2. **Stream Processing**: Build a lazy stream processor with map, filter, and reduce.\n\n3. **Function Decorator**: Implement decorators for logging, timing, and caching.\n\n4. **Parser Combinators**: Create a simple parser combinator library using blocks.\n\n5. **Reactive System**: Build a simple FRP (Functional Reactive Programming) system.\n\n## Real-World Example: Pipeline Builder\n\n```io\nPipeline := Object clone\nPipeline init := method(\n    self steps := list()\n    self\n)\n\nPipeline add := method(step,\n    steps append(step)\n    self\n)\n\nPipeline map := method(f,\n    self add(block(data,\n        data map(f)\n    ))\n)\n\nPipeline filter := method(pred,\n    self add(block(data,\n        data select(pred)\n    ))\n)\n\nPipeline tap := method(f,\n    self add(block(data,\n        f call(data)\n        data\n    ))\n)\n\nPipeline run := method(input,\n    result := input\n    steps foreach(step,\n        result = step call(result)\n    )\n    result\n)\n\n// Usage\npipeline := Pipeline clone init \\\n    filter(block(x, x % 2 == 0)) \\\n    map(block(x, x * x)) \\\n    tap(block(data, (\"After squaring: \" .. data) println)) \\\n    filter(block(x, x > 10)) \\\n    map(block(x, x asString))\n\nresult := pipeline run(list(1, 2, 3, 4, 5, 6))\n// After squaring: list(4, 16, 36)\nresult println  // list(\"16\", \"36\")\n```\n\n## Conclusion\n\nBlocks and closures are fundamental to Io's expressiveness. They're not just anonymous functions—they're first-class objects that capture context, enable functional programming, and allow you to extend the language with new control structures.\n\nThe distinction between blocks (isolated scope) and methods (shared scope with receiver) provides flexibility in how you structure code. Closures emerge naturally from Io's scope rules, making complex patterns like memoization, continuations, and higher-order functions straightforward to implement.\n\nUnderstanding blocks deeply unlocks Io's full potential, enabling you to write code that's both powerful and elegant.\n"},"../_index.json":{"ok":true,"status":200,"content":"{\n  \"title\": \"The Io Programming Language\",\n  \"topTitle\": \"Io\",\n  \"subtitle\": \"A comprehensive guide to prototype-based programming with Io.\",\n  \"content\": [\n    {\n      \"type\": \"ContentText\",\n      \"content\": \"This book provides an in-depth exploration of the Io programming language, designed for experienced programmers who want to understand prototype-based object-oriented programming. Through detailed comparisons with mainstream languages like JavaScript, Python, Ruby, and Java, readers will gain practical insights into Io's unique paradigm.\"\n    },\n    {\n      \"type\": \"ContentCards\",\n      \"title\": \"Chapters\",\n      \"columns\": 2,\n      \"items\": [\n        \"Preface\",\n        \"Introduction\",\n        \"Getting-Started\",\n        \"Everything-is-an-Object\",\n        \"Prototypes-Not-Classes\",\n        \"Messages-and-Slots\",\n        \"Cloning-and-Inheritance\",\n        \"Control-Flow\",\n        \"Collections\",\n        \"Blocks-and-Closures\",\n        \"Exceptions\",\n        \"Metaprogramming\",\n        \"Concurrency\",\n        \"Domain-Specific-Languages\",\n        \"C-Integration\",\n        \"Real-World-Patterns\",\n        \"Case-Studies\",\n        \"Ecosystem-and-Libraries\",\n        \"Conclusion\"\n      ]\n    }\n  ]\n}\n"},"../Exceptions/_index.json":{"ok":false,"status":404},"../Exceptions/_index.md":{"ok":true,"status":200,"content":"---\ntitle: Exceptions\ntopTitle: Io\nsubtitle: \"Error handling built, like everything else, from objects and messages.\"\nnextSectionLink: true\n---\n\nError handling is crucial for robust programs. Io provides an exception system that, like everything else in the language, is built on objects and messages. This chapter explores how exceptions work, how to handle errors gracefully, and how to create custom exception types.\n\n## Basic Exception Handling\n\nIo uses `try`, `catch`, and `raise` for exception handling:\n\n```io\n// Basic try-catch\ntry(\n    10 / 0  // Division by zero\n) catch(Exception, e,\n    (\"Error: \" .. e message) println\n)\n// Error: divide by zero\n\n// Multiple catch blocks\ntry(\n    someRiskyOperation()\n) catch(TypeError, e,\n    \"Type error occurred\" println\n) catch(IOException, e,\n    \"IO error occurred\" println\n) catch(Exception, e,\n    \"Some other error occurred\" println\n)\n```\n\nCompare with other languages:\n\n```python\n# Python\ntry:\n    result = 10 / 0\nexcept ZeroDivisionError as e:\n    print(f\"Error: {e}\")\n```\n\n```java\n// Java\ntry {\n    int result = 10 / 0;\n} catch (ArithmeticException e) {\n    System.out.println(\"Error: \" + e.getMessage());\n}\n```\n\n## Raising Exceptions\n\n```io\n// Raise a simple exception\nException raise(\"Something went wrong\")\n\n// Raise with more information\ne := Exception clone\ne setMessage(\"File not found\")\ne raise\n\n// Conditional raising\nvalidateAge := method(age,\n    if(age \u003c 0, Exception raise(\"Age cannot be negative\"))\n    if(age > 150, Exception raise(\"Age seems unrealistic\"))\n    age\n)\n\ntry(\n    validateAge(-5)\n) catch(Exception, e,\n    e message println  // Age cannot be negative\n)\n```\n\n## Exception Objects\n\nExceptions are just objects:\n\n```io\n// Examine exception structure\ne := Exception clone\ne type println           // Exception\ne proto println          // Object_0x...\n\n// Exception slots\ne setMessage(\"Test error\")\ne message println        // Test error\n\n// Stack trace\ntry(\n    Exception raise(\"Test\")\n) catch(Exception, e,\n    e showStack  // Prints full stack trace\n    e coroutine println  // The coroutine where error occurred\n)\n```\n\n## Creating Custom Exceptions\n\n```io\n// Define custom exception types\nValidationError := Exception clone\nValidationError type := \"ValidationError\"\n\nNetworkError := Exception clone\nNetworkError type := \"NetworkError\"\nNetworkError code := nil\nNetworkError setCode := method(c, self code = c; self)\n\n// Use custom exceptions\nvalidateEmail := method(email,\n    if(email containsSeq(\"@\") not,\n        ValidationError clone setMessage(\"Invalid email format\") raise\n    )\n    email\n)\n\nfetchData := method(url,\n    // Simulate network error\n    if(Random value \u003c 0.3,\n        NetworkError clone setMessage(\"Connection timeout\") setCode(408) raise\n    )\n    \"data\"\n)\n\n// Handle specific exception types\ntry(\n    validateEmail(\"badEmail\")\n) catch(ValidationError, e,\n    (\"Validation failed: \" .. e message) println\n) catch(Exception, e,\n    (\"Unexpected error: \" .. e message) println\n)\n```\n\n## The finally Block\n\n```io\n// Ensure cleanup with finally\nfile := nil\ntry(\n    file = File with(\"data.txt\") openForReading\n    contents := file contents\n    processData(contents)\n) catch(Exception, e,\n    (\"Error reading file: \" .. e message) println\n) finally(\n    if(file, file close)\n    \"Cleanup complete\" println\n)\n\n// finally always executes\nresult := try(\n    \"Success\" println\n    42\n) catch(Exception, e,\n    \"Error\" println\n    0\n) finally(\n    \"Always runs\" println\n)\n// Prints: Success, Always runs\nresult println  // 42\n```\n\n## Return Values and Exceptions\n\n```io\n// try returns a value\nresult := try(\n    10 / 2\n) catch(Exception, e,\n    0  // Default value on error\n)\nresult println  // 5\n\n// With error\nresult := try(\n    10 / 0\n) catch(Exception, e,\n    0  // Default value on error\n)\nresult println  // 0\n\n// Pattern: Result or default\nsafeDiv := method(a, b,\n    try(a / b) catch(Exception, 0)\n)\n\nsafeDiv(10, 2) println  // 5\nsafeDiv(10, 0) println  // 0\n```\n\n## Exception Propagation\n\nExceptions bubble up through the call stack:\n\n```io\nlevel3 := method(\n    Exception raise(\"Error at level 3\")\n)\n\nlevel2 := method(\n    \"Level 2 start\" println\n    level3()\n    \"Level 2 end\" println  // Never reached\n)\n\nlevel1 := method(\n    \"Level 1 start\" println\n    level2()\n    \"Level 1 end\" println  // Never reached\n)\n\ntry(\n    level1()\n) catch(Exception, e,\n    (\"Caught at top level: \" .. e message) println\n)\n// Level 1 start\n// Level 2 start\n// Caught at top level: Error at level 3\n```\n\n## Rethrowing Exceptions\n\n```io\nprocessFile := method(filename,\n    try(\n        file := File with(filename) openForReading\n        // Process file\n    ) catch(Exception, e,\n        (\"Failed to process \" .. filename) println\n        e raise  // Rethrow the original exception\n    )\n)\n\ntry(\n    processFile(\"nonexistent.txt\")\n) catch(Exception, e,\n    \"Caught rethrown exception\" println\n)\n```\n\n## Error Recovery Patterns\n\n### Retry Pattern\n\n```io\nretryOperation := method(operation, maxAttempts,\n    attempts := 0\n    lastError := nil\n    \n    while(attempts \u003c maxAttempts,\n        attempts = attempts + 1\n        \n        e := try(\n            return operation call(attempts)\n        )\n        \n        if(e,\n            lastError = e\n            (\"Attempt \" .. attempts .. \" failed: \" .. e message) println\n            if(attempts \u003c maxAttempts, wait(0.5))\n        )\n    )\n    \n    Exception raise(\"All \" .. maxAttempts .. \" attempts failed. Last error: \" .. lastError message)\n)\n\n// Usage\nresult := retryOperation(\n    block(attempt,\n        if(Random value \u003c 0.7,\n            Exception raise(\"Random failure\"),\n            \"Success on attempt \" .. attempt\n        )\n    ),\n    3\n)\n```\n\n### Circuit Breaker\n\n```io\nCircuitBreaker := Object clone\nCircuitBreaker init := method(threshold, timeout,\n    self failureCount := 0\n    self threshold := threshold\n    self timeout := timeout\n    self state := \"closed\"  // closed, open, half-open\n    self lastFailureTime := nil\n    self\n)\n\nCircuitBreaker call := method(operation,\n    if(state == \"open\",\n        if(Date now - lastFailureTime > timeout,\n            state = \"half-open\"\n            \"Circuit breaker entering half-open state\" println,\n            Exception raise(\"Circuit breaker is open\")\n        )\n    )\n    \n    e := try(\n        result := operation call\n        if(state == \"half-open\",\n            state = \"closed\"\n            failureCount = 0\n            \"Circuit breaker closed\" println\n        )\n        return result\n    )\n    \n    if(e,\n        failureCount = failureCount + 1\n        lastFailureTime = Date now\n        \n        if(failureCount >= threshold,\n            state = \"open\"\n            \"Circuit breaker opened\" println\n        )\n        \n        e raise\n    )\n)\n\n// Usage\nbreaker := CircuitBreaker clone init(3, 5)\n\nunreliableService := block(\n    if(Random value \u003c 0.8,\n        Exception raise(\"Service unavailable\"),\n        \"Service response\"\n    )\n)\n\n5 repeat(\n    try(\n        breaker call(unreliableService) println\n    ) catch(Exception, e,\n        (\"Failed: \" .. e message) println\n    )\n    wait(1)\n)\n```\n\n## Assertion and Validation\n\n```io\n// Simple assertion\nassert := method(condition, message,\n    if(condition not,\n        Exception raise(message ifNilEval(\"Assertion failed\"))\n    )\n)\n\nassert(5 > 3, \"Math is broken\")\n// assert(3 > 5, \"This will fail\")\n\n// Validation framework\nValidator := Object clone\nValidator rules := list()\n\nValidator addRule := method(rule, message,\n    rules append(list(rule, message))\n    self\n)\n\nValidator validate := method(value,\n    errors := list()\n    \n    rules foreach(rule,\n        if(rule at(0) call(value) not,\n            errors append(rule at(1))\n        )\n    )\n    \n    if(errors size > 0,\n        ValidationError clone setMessage(errors join(\", \")) raise\n    )\n    \n    value\n)\n\n// Usage\nageValidator := Validator clone \\\n    addRule(block(v, v isKindOf(Number)), \"Must be a number\") \\\n    addRule(block(v, v >= 0), \"Must be non-negative\") \\\n    addRule(block(v, v \u003c= 150), \"Must be realistic\")\n\ntry(\n    ageValidator validate(25) println  // 25\n    ageValidator validate(-5)  // Throws\n) catch(ValidationError, e,\n    e message println  // Must be non-negative\n)\n```\n\n## Exception Context and Debugging\n\n```io\n// Enhanced exception with context\nContextualException := Exception clone\nContextualException context := Map clone\n\nContextualException addContext := method(key, value,\n    context atPut(key, value)\n    self\n)\n\nContextualException describe := method(\n    result := message .. \"\\nContext:\\n\"\n    context foreach(key, value,\n        result = result .. \"  \" .. key .. \": \" .. value .. \"\\n\"\n    )\n    result\n)\n\n// Usage\nprocessUser := method(userData,\n    if(userData at(\"age\") \u003c 18,\n        ContextualException clone \\\n            setMessage(\"User too young\") \\\n            addContext(\"userId\", userData at(\"id\")) \\\n            addContext(\"age\", userData at(\"age\")) \\\n            addContext(\"timestamp\", Date now) \\\n            raise\n    )\n)\n\ntry(\n    processUser(Map with(\"id\", 123, \"age\", 16))\n) catch(ContextualException, e,\n    e describe println\n)\n```\n\n## Resource Management\n\n```io\n// RAII-style resource management\nwithResource := method(resourceCreator, resourceUser,\n    resource := nil\n    try(\n        resource = resourceCreator call\n        resourceUser call(resource)\n    ) finally(\n        if(resource and resource hasSlot(\"close\"),\n            resource close\n        )\n    )\n)\n\n// Usage\nwithResource(\n    block(File with(\"test.txt\") openForReading),\n    block(file,\n        file contents println\n    )\n)\n\n// Database connection example\nwithConnection := method(dbUrl, operation,\n    conn := nil\n    try(\n        conn = Database connect(dbUrl)\n        conn beginTransaction\n        result := operation call(conn)\n        conn commit\n        result\n    ) catch(Exception, e,\n        if(conn, conn rollback)\n        e raise\n    ) finally(\n        if(conn, conn close)\n    )\n)\n```\n\n## Global Exception Handling\n\n```io\n// Install global exception handler\nSystem handleException := method(e,\n    logFile := File with(\"errors.log\") openForAppending\n    logFile write(Date now asString .. \" - \" .. e message .. \"\\n\")\n    logFile close\n    \n    // Original behavior\n    e showStack\n    System exit(1)\n)\n\n// Uncaught exceptions now get logged\n// Exception raise(\"Uncaught error\")\n```\n\n## Testing with Exceptions\n\n```io\n// Test framework with exception support\nTest := Object clone\nTest assertRaises := method(exceptionType, block,\n    raised := false\n    try(\n        block call\n    ) catch(Exception, e,\n        if(e type == exceptionType type,\n            raised = true,\n            Exception raise(\"Wrong exception type: expected \" .. exceptionType type .. \", got \" .. e type)\n        )\n    )\n    \n    if(raised not,\n        Exception raise(\"Expected exception \" .. exceptionType type .. \" was not raised\")\n    )\n)\n\n// Usage\nTest assertRaises(ValidationError, block(\n    validateEmail(\"invalid\")\n))\n\"Test passed\" println\n```\n\n## Performance Considerations\n\n```io\n// Exceptions have overhead\nbenchmark := method(name, iterations, block,\n    start := Date now\n    iterations repeat(block)\n    elapsed := Date now - start\n    (name .. \": \" .. elapsed) println\n)\n\n// Without exceptions\nbenchmark(\"No exceptions\", 100000, block(\n    if(Random value \u003c 0.1, nil, \"success\")\n))\n\n// With exceptions\nbenchmark(\"With exceptions\", 100000, block(\n    try(\n        if(Random value \u003c 0.1, Exception raise(\"error\"))\n        \"success\"\n    ) catch(Exception, nil)\n))\n\n// Exceptions are slower - use for exceptional cases, not control flow\n```\n\n## Common Pitfalls\n\n### Catching Too Broadly\n\n```io\n// BAD: Catches everything, hiding bugs\ntry(\n    complexOperation()\n) catch(Exception, e,\n    // Silently ignore all errors\n)\n\n// GOOD: Catch specific exceptions\ntry(\n    complexOperation()\n) catch(NetworkError, e,\n    handleNetworkError(e)\n) catch(ValidationError, e,\n    handleValidationError(e)\n)\n```\n\n### Resource Leaks\n\n```io\n// BAD: File not closed on error\nfile := File with(\"data.txt\") openForReading\nprocessFile(file)  // If this throws, file never closes\nfile close\n\n// GOOD: Use finally\nfile := nil\ntry(\n    file = File with(\"data.txt\") openForReading\n    processFile(file)\n) finally(\n    if(file, file close)\n)\n```\n\n## Exercises\n\n1. **Result Type**: Implement a Result type that can be either Ok(value) or Error(error), similar to Rust.\n\n2. **Retry with Exponential Backoff**: Create a retry mechanism with exponential backoff and jitter.\n\n3. **Exception Logger**: Build a logging system that captures and categorizes exceptions.\n\n4. **Validation Chain**: Create a validation system that accumulates all errors instead of failing on first.\n\n5. **Async Exception Handling**: Implement exception handling for coroutine-based async operations.\n\n## Real-World Example: HTTP Client with Error Handling\n\n```io\nHttpClient := Object clone\nHttpClient timeoutMs := 5000\nHttpClient maxRetries := 3\n\nHttpError := Exception clone\nHttpError statusCode := nil\n\nHttpClient get := method(url,\n    retryCount := 0\n    \n    loop(\n        try(\n            response := self doRequest(url)\n            \n            if(response statusCode >= 200 and response statusCode \u003c 300,\n                return response body\n            )\n            \n            if(response statusCode >= 400 and response statusCode \u003c 500,\n                // Client error - don't retry\n                HttpError clone \\\n                    setMessage(\"HTTP \" .. response statusCode) \\\n                    setSlot(\"statusCode\", response statusCode) \\\n                    raise\n            )\n            \n            // Server error - might retry\n            if(response statusCode >= 500,\n                error := HttpError clone \\\n                    setMessage(\"Server error: \" .. response statusCode) \\\n                    setSlot(\"statusCode\", response statusCode)\n                \n                if(retryCount \u003c maxRetries,\n                    retryCount = retryCount + 1\n                    delay := (2 pow(retryCount)) * 100\n                    (\"Retry \" .. retryCount .. \" after \" .. delay .. \"ms\") println\n                    wait(delay / 1000)\n                    continue,\n                    error raise\n                )\n            )\n            \n        ) catch(NetworkError, e,\n            if(retryCount \u003c maxRetries,\n                retryCount = retryCount + 1\n                (\"Network error, retry \" .. retryCount) println\n                wait(1)\n                continue,\n                e raise\n            )\n        )\n    )\n)\n\n// Usage with comprehensive error handling\nfetchUserData := method(userId,\n    try(\n        data := HttpClient get(\"https://api.example.com/users/\" .. userId)\n        JSON parse(data)\n    ) catch(HttpError, e,\n        if(e statusCode == 404,\n            nil,  // User not found\n            if(e statusCode == 401,\n                Exception raise(\"Authentication required\"),\n                Exception raise(\"HTTP error: \" .. e statusCode)\n            )\n        )\n    ) catch(NetworkError, e,\n        Exception raise(\"Network unavailable\")\n    ) catch(Exception, e,\n        Exception raise(\"Unexpected error: \" .. e message)\n    )\n)\n```\n\n## Conclusion\n\nIo's exception system demonstrates the language's consistency: exceptions are objects, throwing is a message, and catching is a method. This uniformity makes the system easy to understand while remaining powerful enough for sophisticated error handling.\n\nThe key to effective exception handling in Io is understanding when to use exceptions (for exceptional circumstances) versus return values (for expected conditions), and ensuring proper resource cleanup with `finally` blocks. Custom exception types and contextual information make debugging easier, while patterns like retry logic and circuit breakers add robustness to applications.\n"}}</script>
+</body>
+</html>

@@ -1,0 +1,1181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="stylesheet" href="../colvmn/style.css">
+<title>Case Studies – Io</title>
+  <link rel="alternate" type="text/plain" title="llms.txt" href="/llms.txt">
+  <meta name="description" content="Complete Io programs that bring the language's features together.">
+</head>
+<body>
+<div class="page loaded"><div class="header"><div><h1>Case Studies</h1><a class="back-link" href="../index.html">&larr; The Io Programming Language</a></div><a class="brand" href="../index.html">Io</a></div><p class="intro">Complete Io programs that bring the language's features together.</p><nav class="toc"><ul><li><a href="#case-study-1-web-server">Case Study 1: Web Server</a></li><li><a href="#case-study-2-database-orm">Case Study 2: Database ORM</a></li><li><a href="#case-study-3-game-engine">Case Study 3: Game Engine</a></li><li><a href="#case-study-4-build-system">Case Study 4: Build System</a></li><li><a href="#lessons-learned">Lessons Learned</a></li><li><a href="#conclusion">Conclusion</a></li></ul></nav><div class="section"><div class="section-body"><p>This chapter presents complete, real-world applications built in Io. Each case study demonstrates how Io's features work together to solve practical problems, showing both the elegance and challenges of building substantial systems in the language.</p></div></div><h2 id="case-study-1-web-server">Case Study 1: Web Server</h2><div class="section"><div class="section-body"><p>Building a simple but functional HTTP server demonstrates Io's networking, concurrency, and string handling:</p><pre><code>// HTTP Server Implementation
+HttpServer := Object clone
+HttpServer init := method(port,
+    self port := port
+    self routes := Map clone
+    self middlewares := list()
+    self
+)
+
+HttpRequest := Object clone
+HttpRequest parse := method(rawData,
+    lines := rawData split("\r\n")
+    if(lines size == 0, return nil)
+    
+    // Parse request line
+    requestLine := lines at(0) split(" ")
+    self method := requestLine at(0)
+    self path := requestLine at(1)
+    self version := requestLine at(2)
+    
+    // Parse headers
+    self headers := Map clone
+    self body := ""
+    
+    bodyStart := false
+    lines slice(1) foreach(line,
+        if(bodyStart,
+            body = body .. line,
+            if(line size == 0,
+                bodyStart = true,
+                parts := line split(": ")
+                if(parts size == 2,
+                    headers atPut(parts at(0), parts at(1))
+                )
+            )
+        )
+    )
+    
+    // Parse query parameters
+    self params := Map clone
+    if(path containsSeq("?"),
+        parts := path split("?")
+        self path = parts at(0)
+        queryString := parts at(1)
+        
+        queryString split("&amp;") foreach(param,
+            kv := param split("=")
+            if(kv size == 2,
+                params atPut(kv at(0), kv at(1) urlDecode)
+            )
+        )
+    )
+    
+    self
+)
+
+HttpResponse := Object clone
+HttpResponse init := method(
+    self status := 200
+    self headers := Map clone
+    self body := ""
+    
+    headers atPut("Content-Type", "text/html")
+    headers atPut("Server", "Io-Server/1.0")
+    self
+)
+
+HttpResponse setStatus := method(code,
+    status = code
+    self
+)
+
+HttpResponse setHeader := method(key, value,
+    headers atPut(key, value)
+    self
+)
+
+HttpResponse write := method(content,
+    body = body .. content
+    self
+)
+
+HttpResponse json := method(data,
+    setHeader("Content-Type", "application/json")
+    write(data asJson)
+    self
+)
+
+HttpResponse build := method(
+    statusText := Map with(
+        200, "OK",
+        404, "Not Found",
+        500, "Internal Server Error"
+    ) at(status, "Unknown")
+    
+    result := "HTTP/1.1 " .. status .. " " .. statusText .. "\r\n"
+    
+    headers atPut("Content-Length", body size asString)
+    headers foreach(key, value,
+        result = result .. key .. ": " .. value .. "\r\n"
+    )
+    
+    result .. "\r\n" .. body
+)
+
+// Middleware support
+HttpServer use := method(middleware,
+    middlewares append(middleware)
+    self
+)
+
+// Routing
+HttpServer route := method(method, path, handler,
+    key := method .. ":" .. path
+    routes atPut(key, handler)
+    self
+)
+
+HttpServer get := method(path, handler,
+    route("GET", path, handler)
+)
+
+HttpServer post := method(path, handler,
+    route("POST", path, handler)
+)
+
+// Request handling
+HttpServer handleConnection := method(socket,
+    rawData := socket readUntilSeq("\r\n\r\n")
+    
+    request := HttpRequest parse(rawData)
+    if(request isNil,
+        socket close
+        return
+    )
+    
+    response := HttpResponse clone init
+    
+    // Run middlewares
+    middlewares foreach(middleware,
+        middleware call(request, response)
+    )
+    
+    // Find route
+    key := request method .. ":" .. request path
+    handler := routes at(key)
+    
+    if(handler,
+        e := try(
+            handler call(request, response)
+        ) catch(Exception, e,
+            response setStatus(500) write("Internal Server Error: " .. e message)
+        )
+    ,
+        // Try pattern matching for dynamic routes
+        handled := false
+        routes foreach(routeKey, routeHandler,
+            parts := routeKey split(":")
+            routeMethod := parts at(0)
+            routePath := parts at(1)
+            
+            if(routeMethod == request method and matchPath(routePath, request path),
+                routeHandler call(request, response)
+                handled = true
+                break
+            )
+        )
+        
+        if(handled not,
+            response setStatus(404) write("Not Found")
+        )
+    )
+    
+    socket write(response build)
+    socket close
+)
+
+HttpServer matchPath := method(pattern, path,
+    // Simple pattern matching (e.g., /users/:id)
+    if(pattern containsSeq(":"),
+        patternParts := pattern split("/")
+        pathParts := path split("/")
+        
+        if(patternParts size != pathParts size, return false)
+        
+        patternParts foreach(i, part,
+            if(part beginsWithSeq(":") not,
+                if(part != pathParts at(i), return false)
+            )
+        )
+        
+        true
+    ,
+        pattern == path
+    )
+)
+
+HttpServer start := method(
+    server := Socket clone
+    server setHost("127.0.0.1")
+    server setPort(port)
+    server bind
+    server listen
+    
+    ("Server listening on port " .. port) println
+    
+    loop(
+        client := server accept
+        @handleConnection(client)  // Handle async
+    )
+)
+
+// Example application
+app := HttpServer clone init(8080)
+
+// Middleware for logging
+app use(block(request, response,
+    ("[" .. Date now .. "] " .. request method .. " " .. request path) println
+))
+
+// Static content
+app get("/", block(request, response,
+    response write("&lt;h1&gt;Welcome to Io Web Server&lt;/h1&gt;")
+    response write("&lt;p&gt;A simple server built with Io&lt;/p&gt;")
+))
+
+// JSON API
+app get("/api/info", block(request, response,
+    info := Map with(
+        "server", "Io-Server",
+        "version", "1.0",
+        "time", Date now asString
+    )
+    response json(info)
+))
+
+// Dynamic routes
+app get("/users/:id", block(request, response,
+    // Extract ID from path
+    id := request path split("/") at(2)
+    response write("&lt;h1&gt;User Profile&lt;/h1&gt;")
+    response write("&lt;p&gt;User ID: " .. id .. "&lt;/p&gt;")
+))
+
+// Form handling
+app post("/submit", block(request, response,
+    // Parse form data from body
+    response write("&lt;h1&gt;Form Submitted&lt;/h1&gt;")
+    response write("&lt;p&gt;Data: " .. request body .. "&lt;/p&gt;")
+))
+
+// Start server
+app start</code></pre></div></div><h2 id="case-study-2-database-orm">Case Study 2: Database ORM</h2><div class="section"><div class="section-body"><p>A simple object-relational mapper showcasing metaprogramming and DSL capabilities:</p><pre><code>// ORM Implementation
+ORM := Object clone
+
+// Database connection (simplified)
+Database := Object clone
+Database connections := Map clone
+
+Database connect := method(name, config,
+    conn := Connection clone init(config)
+    connections atPut(name, conn)
+    conn
+)
+
+Connection := Object clone
+Connection init := method(config,
+    self config := config
+    self tables := Map clone
+    self
+)
+
+Connection execute := method(sql,
+    ("[SQL] " .. sql) println
+    // Simulate results
+    list()
+)
+
+// Model base class
+Model := Object clone
+Model tableName := nil
+Model fields := Map clone
+Model connection := nil
+
+Model field := method(name, type,
+    fields atPut(name, Map with("type", type, "name", name))
+    
+    // Generate getter
+    self setSlot(name, method(
+        self getSlot("_" .. name)
+    ))
+    
+    // Generate setter
+    self setSlot("set" .. name asCapitalized, method(value,
+        self setSlot("_" .. name, value)
+        self
+    ))
+    
+    self
+)
+
+Model belongsTo := method(name, targetModel,
+    fields atPut(name .. "_id", Map with("type", "INTEGER", "name", name .. "_id"))
+    
+    self setSlot(name, method(
+        targetModel findById(self getSlot("_" .. name .. "_id"))
+    ))
+    
+    self
+)
+
+Model hasMany := method(name, targetModel, foreignKey,
+    self setSlot(name, method(
+        targetModel where(foreignKey .. " = " .. self id)
+    ))
+    
+    self
+)
+
+Model createTable := method(
+    sql := "CREATE TABLE IF NOT EXISTS " .. tableName .. " (\n"
+    sql = sql .. "  id INTEGER PRIMARY KEY AUTOINCREMENT,\n"
+    
+    fieldDefs := fields map(name, field,
+        "  " .. name .. " " .. field at("type")
+    )
+    
+    sql = sql .. fieldDefs join(",\n") .. "\n);"
+    
+    connection execute(sql)
+    self
+)
+
+Model dropTable := method(
+    connection execute("DROP TABLE IF EXISTS " .. tableName)
+    self
+)
+
+Model init := method(
+    fields foreach(name, field,
+        self setSlot("_" .. name, nil)
+    )
+    self setSlot("_id", nil)
+    self
+)
+
+Model save := method(
+    if(_id,
+        update,
+        insert
+    )
+)
+
+Model insert := method(
+    columns := list()
+    values := list()
+    
+    fields foreach(name, field,
+        value := self getSlot("_" .. name)
+        if(value isNil not,
+            columns append(name)
+            values append("'" .. value asString .. "'")
+        )
+    )
+    
+    sql := "INSERT INTO " .. tableName .. " (" .. columns join(", ") .. ") VALUES (" .. values join(", ") .. ")"
+    
+    connection execute(sql)
+    self _id := connection lastInsertId  // Simulated
+    self
+)
+
+Model update := method(
+    updates := list()
+    
+    fields foreach(name, field,
+        value := self getSlot("_" .. name)
+        if(value isNil not,
+            updates append(name .. " = '" .. value asString .. "'")
+        )
+    )
+    
+    sql := "UPDATE " .. tableName .. " SET " .. updates join(", ") .. " WHERE id = " .. _id
+    
+    connection execute(sql)
+    self
+)
+
+Model delete := method(
+    if(_id,
+        connection execute("DELETE FROM " .. tableName .. " WHERE id = " .. _id)
+        self _id := nil
+    )
+    self
+)
+
+// Class methods
+Model all := method(
+    sql := "SELECT * FROM " .. tableName
+    rows := connection execute(sql)
+    
+    rows map(row, fromRow(row))
+)
+
+Model findById := method(id,
+    sql := "SELECT * FROM " .. tableName .. " WHERE id = " .. id
+    rows := connection execute(sql)
+    
+    if(rows size &gt; 0,
+        fromRow(rows first),
+        nil
+    )
+)
+
+Model where := method(condition,
+    sql := "SELECT * FROM " .. tableName .. " WHERE " .. condition
+    rows := connection execute(sql)
+    
+    rows map(row, fromRow(row))
+)
+
+Model fromRow := method(row,
+    instance := self clone init
+    instance _id := row at("id")
+    
+    fields foreach(name, field,
+        instance setSlot("_" .. name, row at(name))
+    )
+    
+    instance
+)
+
+// Query builder
+QueryBuilder := Object clone
+QueryBuilder init := method(model,
+    self model := model
+    self selections := list("*")
+    self conditions := list()
+    self orderBy := nil
+    self limitValue := nil
+    self
+)
+
+QueryBuilder select := method(
+    self selections = call message arguments map(arg,
+        call sender doMessage(arg) asString
+    )
+    self
+)
+
+QueryBuilder where := method(condition,
+    conditions append(condition)
+    self
+)
+
+QueryBuilder order := method(column, direction,
+    orderBy = column .. " " .. if(direction, direction, "ASC")
+    self
+)
+
+QueryBuilder limit := method(n,
+    limitValue = n
+    self
+)
+
+QueryBuilder build := method(
+    sql := "SELECT " .. selections join(", ") .. " FROM " .. model tableName
+    
+    if(conditions size &gt; 0,
+        sql = sql .. " WHERE " .. conditions join(" AND ")
+    )
+    
+    if(orderBy,
+        sql = sql .. " ORDER BY " .. orderBy
+    )
+    
+    if(limitValue,
+        sql = sql .. " LIMIT " .. limitValue
+    )
+    
+    sql
+)
+
+QueryBuilder execute := method(
+    sql := build
+    rows := model connection execute(sql)
+    rows map(row, model fromRow(row))
+)
+
+// Define models
+User := Model clone
+User tableName = "users"
+User connection = Database connect("main", Map with("file", "app.db"))
+
+User field("name", "VARCHAR(100)") \
+    field("email", "VARCHAR(100)") \
+    field("age", "INTEGER") \
+    field("created_at", "DATETIME")
+
+User hasMany("posts", Post, "user_id")
+
+Post := Model clone
+Post tableName = "posts"
+Post connection = User connection
+
+Post field("title", "VARCHAR(200)") \
+    field("content", "TEXT") \
+    field("published", "BOOLEAN") \
+    field("user_id", "INTEGER")
+
+Post belongsTo("user", User)
+
+// Validations
+User validate := method(
+    errors := list()
+    
+    if(_name isNil or _name size == 0,
+        errors append("Name is required")
+    )
+    
+    if(_email isNil or _email containsSeq("@") not,
+        errors append("Invalid email")
+    )
+    
+    if(_age and (_age &lt; 0 or _age &gt; 150),
+        errors append("Invalid age")
+    )
+    
+    if(errors size &gt; 0,
+        Exception raise(errors join(", "))
+    )
+    
+    true
+)
+
+User beforeSave := method(
+    validate
+    _created_at := Date now
+)
+
+// Usage example
+User createTable
+Post createTable
+
+user := User clone init
+user setName("Alice") setEmail("alice@example.com") setAge(30)
+user save
+
+post := Post clone init
+post setTitle("First Post") \
+    setContent("Hello, World!") \
+    setPublished(true) \
+    setUserId(user id)
+post save
+
+// Query examples
+allUsers := User all
+youngUsers := User where("age &lt; 25")
+userPosts := user posts
+
+// Query builder
+query := QueryBuilder clone init(User)
+results := query select("name", "email") \
+                where("age &gt; 21") \
+                order("name") \
+                limit(10) \
+                execute</code></pre></div></div><h2 id="case-study-3-game-engine">Case Study 3: Game Engine</h2><div class="section"><div class="section-body"><p>A simple 2D game engine demonstrating real-time systems and graphics:</p><pre><code>// Game Engine Core
+GameEngine := Object clone
+GameEngine init := method(width, height,
+    self width := width
+    self height := height
+    self entities := list()
+    self systems := list()
+    self running := true
+    self fps := 60
+    self frameTime := 1.0 / fps
+    self
+)
+
+// Entity Component System
+Entity := Object clone
+Entity init := method(
+    self id := Random uuid
+    self components := Map clone
+    self active := true
+    self
+)
+
+Entity addComponent := method(name, component,
+    components atPut(name, component)
+    component entity := self
+    self
+)
+
+Entity getComponent := method(name,
+    components at(name)
+)
+
+Entity hasComponent := method(name,
+    components hasKey(name)
+)
+
+// Components
+Component := Object clone
+
+PositionComponent := Component clone
+PositionComponent init := method(x, y,
+    self x := x
+    self y := y
+    self
+)
+
+VelocityComponent := Component clone
+VelocityComponent init := method(dx, dy,
+    self dx := dx
+    self dy := dy
+    self
+)
+
+SpriteComponent := Component clone
+SpriteComponent init := method(image, width, height,
+    self image := image
+    self width := width
+    self height := height
+    self
+)
+
+ColliderComponent := Component clone
+ColliderComponent init := method(width, height,
+    self width := width
+    self height := height
+    self
+)
+
+HealthComponent := Component clone
+HealthComponent init := method(maxHealth,
+    self maxHealth := maxHealth
+    self currentHealth := maxHealth
+    self
+)
+
+// Systems
+System := Object clone
+System init := method(
+    self requiredComponents := list()
+    self
+)
+
+System process := method(entity, deltaTime,
+    // Override in subclasses
+)
+
+System canProcess := method(entity,
+    requiredComponents all(comp,
+        entity hasComponent(comp)
+    )
+)
+
+MovementSystem := System clone
+MovementSystem requiredComponents = list("position", "velocity")
+
+MovementSystem process := method(entity, deltaTime,
+    pos := entity getComponent("position")
+    vel := entity getComponent("velocity")
+    
+    pos x = pos x + vel dx * deltaTime
+    pos y = pos y + vel dy * deltaTime
+)
+
+CollisionSystem := System clone
+CollisionSystem requiredComponents = list("position", "collider")
+
+CollisionSystem init := method(
+    resend
+    self collisions := list()
+    self
+)
+
+CollisionSystem update := method(entities, deltaTime,
+    collisions = list()
+    
+    // Check all pairs
+    entities foreach(i, e1,
+        if(canProcess(e1),
+            entities slice(i + 1) foreach(e2,
+                if(canProcess(e2) and checkCollision(e1, e2),
+                    collisions append(list(e1, e2))
+                    onCollision(e1, e2)
+                )
+            )
+        )
+    )
+)
+
+CollisionSystem checkCollision := method(e1, e2,
+    p1 := e1 getComponent("position")
+    c1 := e1 getComponent("collider")
+    p2 := e2 getComponent("position")
+    c2 := e2 getComponent("collider")
+    
+    // AABB collision
+    p1 x &lt; p2 x + c2 width and
+    p1 x + c1 width &gt; p2 x and
+    p1 y &lt; p2 y + c2 height and
+    p1 y + c1 height &gt; p2 y
+)
+
+CollisionSystem onCollision := method(e1, e2,
+    ("Collision between " .. e1 id .. " and " .. e2 id) println
+)
+
+// Rendering (simulated)
+RenderSystem := System clone
+RenderSystem requiredComponents = list("position", "sprite")
+
+RenderSystem init := method(
+    resend
+    self screen := list()
+    self
+)
+
+RenderSystem render := method(entities,
+    // Clear screen
+    screen = list()
+    
+    entities foreach(entity,
+        if(canProcess(entity),
+            pos := entity getComponent("position")
+            sprite := entity getComponent("sprite")
+            
+            screen append(Map with(
+                "x", pos x,
+                "y", pos y,
+                "image", sprite image
+            ))
+        )
+    )
+    
+    // Draw screen (simulated)
+    drawScreen
+)
+
+RenderSystem drawScreen := method(
+    "Frame:" println
+    screen foreach(item,
+        ("  [" .. item at("image") .. "] at (" .. 
+         item at("x") round .. ", " .. item at("y") round .. ")") println
+    )
+)
+
+// Input handling
+InputManager := Object clone
+InputManager init := method(
+    self keys := Map clone
+    self mouseX := 0
+    self mouseY := 0
+    self
+)
+
+InputManager isKeyPressed := method(key,
+    keys at(key, false)
+)
+
+InputManager setKey := method(key, pressed,
+    keys atPut(key, pressed)
+)
+
+// Game states
+GameState := Object clone
+GameState enter := method()
+GameState exit := method()
+GameState update := method(deltaTime)
+GameState render := method()
+
+MenuState := GameState clone
+MenuState enter := method(
+    "Entering menu" println
+    self selectedOption := 0
+    self options := list("Start Game", "Options", "Quit")
+)
+
+MenuState update := method(deltaTime,
+    // Handle menu input
+    if(InputManager isKeyPressed("up"),
+        selectedOption = (selectedOption - 1) max(0)
+    )
+    if(InputManager isKeyPressed("down"),
+        selectedOption = (selectedOption + 1) min(options size - 1)
+    )
+    if(InputManager isKeyPressed("enter"),
+        handleSelection
+    )
+)
+
+MenuState handleSelection := method(
+    option := options at(selectedOption)
+    if(option == "Start Game",
+        GameEngine setState(PlayState)
+    )
+    if(option == "Quit",
+        GameEngine stop
+    )
+)
+
+PlayState := GameState clone
+PlayState enter := method(
+    "Starting game" println
+    createLevel
+)
+
+PlayState createLevel := method(
+    // Create player
+    player := Entity clone init
+    player addComponent("position", PositionComponent clone init(100, 100))
+    player addComponent("velocity", VelocityComponent clone init(0, 0))
+    player addComponent("sprite", SpriteComponent clone init("player", 32, 32))
+    player addComponent("collider", ColliderComponent clone init(32, 32))
+    player addComponent("health", HealthComponent clone init(100))
+    
+    GameEngine addEntity(player)
+    
+    // Create enemies
+    3 repeat(i,
+        enemy := Entity clone init
+        enemy addComponent("position", 
+            PositionComponent clone init(200 + i * 50, 200))
+        enemy addComponent("velocity", 
+            VelocityComponent clone init(Random value * 20 - 10, Random value * 20 - 10))
+        enemy addComponent("sprite", 
+            SpriteComponent clone init("enemy", 24, 24))
+        enemy addComponent("collider", 
+            ColliderComponent clone init(24, 24))
+        
+        GameEngine addEntity(enemy)
+    )
+)
+
+PlayState update := method(deltaTime,
+    // Handle player input
+    player := GameEngine entities first
+    if(player,
+        vel := player getComponent("velocity")
+        
+        vel dx = 0
+        vel dy = 0
+        
+        if(InputManager isKeyPressed("left"), vel dx = -100)
+        if(InputManager isKeyPressed("right"), vel dx = 100)
+        if(InputManager isKeyPressed("up"), vel dy = -100)
+        if(InputManager isKeyPressed("down"), vel dy = 100)
+    )
+)
+
+// Main game engine methods
+GameEngine addEntity := method(entity,
+    entities append(entity)
+    entity
+)
+
+GameEngine removeEntity := method(entity,
+    entities remove(entity)
+)
+
+GameEngine addSystem := method(system,
+    systems append(system)
+    system
+)
+
+GameEngine setState := method(state,
+    if(hasSlot("currentState") and currentState,
+        currentState exit
+    )
+    currentState := state
+    currentState enter
+)
+
+GameEngine update := method(deltaTime,
+    // Update current state
+    if(currentState,
+        currentState update(deltaTime)
+    )
+    
+    // Update systems
+    systems foreach(system,
+        if(system hasSlot("update"),
+            system update(entities, deltaTime),
+            entities foreach(entity,
+                if(system canProcess(entity),
+                    system process(entity, deltaTime)
+                )
+            )
+        )
+    )
+    
+    // Remove inactive entities
+    entities = entities select(e, e active)
+)
+
+GameEngine render := method(
+    if(currentState,
+        currentState render
+    )
+    
+    renderSystem render(entities)
+)
+
+GameEngine run := method(
+    lastTime := Date now
+    
+    while(running,
+        currentTime := Date now
+        deltaTime := currentTime - lastTime
+        
+        if(deltaTime &gt;= frameTime,
+            update(deltaTime)
+            render
+            lastTime = currentTime
+        )
+        
+        // Small delay to prevent CPU spinning
+        wait(0.001)
+    )
+)
+
+GameEngine stop := method(
+    running = false
+)
+
+// Initialize and run game
+game := GameEngine clone init(800, 600)
+
+// Add systems
+game addSystem(MovementSystem clone)
+game addSystem(CollisionSystem clone init)
+game renderSystem := RenderSystem clone init
+
+// Set initial state
+game setState(MenuState)
+
+// Simulate some gameplay
+"=== Game Engine Demo ===" println
+MenuState handleSelection  // Start game
+
+// Run a few frames
+5 repeat(i,
+    ("Frame " .. i) println
+    game update(game frameTime)
+    game render
+    wait(0.1)
+)</code></pre></div></div><h2 id="case-study-4-build-system">Case Study 4: Build System</h2><div class="section"><div class="section-body"><p>A build system similar to Make or Rake:</p><pre><code>// Build System
+BuildSystem := Object clone
+BuildSystem init := method(
+    self tasks := Map clone
+    self dependencies := Map clone
+    self executed := list()
+    self config := Map clone
+    self
+)
+
+Task := Object clone
+Task init := method(name, deps, action,
+    self name := name
+    self dependencies := if(deps, deps, list())
+    self action := action
+    self outputs := list()
+    self inputs := list()
+    self
+)
+
+Task execute := method(context,
+    ("Executing task: " .. name) println
+    if(action,
+        action call(context)
+    )
+)
+
+Task upToDate := method(
+    if(outputs size == 0 or inputs size == 0,
+        return false
+    )
+    
+    outputTime := outputs map(f, File with(f) lastModified) min
+    inputTime := inputs map(f, File with(f) lastModified) max
+    
+    outputTime &gt; inputTime
+)
+
+// DSL for defining tasks
+BuildSystem task := method(name,
+    t := Task clone init(name, list(), nil)
+    tasks atPut(name, t)
+    
+    self currentTask := t
+    call evalArgAt(0)
+    t
+)
+
+BuildSystem desc := method(description,
+    if(currentTask,
+        currentTask description := description
+    )
+)
+
+BuildSystem depends := method(
+    deps := call message arguments map(arg,
+        call sender doMessage(arg) asString
+    )
+    if(currentTask,
+        currentTask dependencies = deps
+    )
+)
+
+BuildSystem action := method(
+    if(currentTask,
+        currentTask action = call argAt(0)
+    )
+)
+
+BuildSystem file := method(output, inputs,
+    name := output
+    t := Task clone init(name, list(), nil)
+    t outputs = list(output)
+    t inputs = if(inputs type == "List", inputs, list(inputs))
+    
+    tasks atPut(name, t)
+    self currentTask := t
+    
+    call evalArgAt(2)
+    t
+)
+
+// Running tasks
+BuildSystem run := method(taskName,
+    executed = list()
+    executeTask(taskName)
+)
+
+BuildSystem executeTask := method(taskName,
+    if(executed contains(taskName),
+        return
+    )
+    
+    task := tasks at(taskName)
+    if(task isNil,
+        Exception raise("Task not found: " .. taskName)
+    )
+    
+    // Check if up to date
+    if(task upToDate,
+        ("Task " .. taskName .. " is up to date") println
+        return
+    )
+    
+    // Execute dependencies first
+    task dependencies foreach(dep,
+        executeTask(dep)
+    )
+    
+    // Execute the task
+    task execute(self)
+    executed append(taskName)
+)
+
+// Utilities
+BuildSystem sh := method(command,
+    ("$ " .. command) println
+    System system(command)
+)
+
+BuildSystem glob := method(pattern,
+    Directory with(".") files select(f,
+        f name matchesRegex(pattern)
+    ) map(name)
+)
+
+BuildSystem mkdir := method(path,
+    Directory with(path) create
+)
+
+BuildSystem cp := method(src, dest,
+    File with(src) copyTo(dest)
+)
+
+BuildSystem rm := method(path,
+    File with(path) remove
+)
+
+// Configuration
+BuildSystem configure := method(
+    call message arguments foreach(arg,
+        key := arg name
+        value := call sender doMessage(arg arguments at(0))
+        config atPut(key, value)
+    )
+    self
+)
+
+// Example Buildfile
+build := BuildSystem clone init
+
+build configure(
+    compiler: "gcc",
+    flags: "-Wall -O2",
+    srcDir: "src",
+    buildDir: "build"
+)
+
+build task("clean",
+    desc("Remove all build artifacts")
+    action(
+        rm(config at("buildDir"))
+        "Cleaned" println
+    )
+)
+
+build task("init",
+    desc("Initialize build directory")
+    action(
+        mkdir(config at("buildDir"))
+    )
+)
+
+build task("compile",
+    desc("Compile C sources")
+    depends("init")
+    action(
+        sources := glob("src/*.c")
+        sources foreach(src,
+            obj := src replaceSeq(".c", ".o") replaceSeq("src/", "build/")
+            sh(config at("compiler") .. " " .. config at("flags") .. 
+               " -c " .. src .. " -o " .. obj)
+        )
+    )
+)
+
+build task("link",
+    desc("Link object files")
+    depends("compile")
+    action(
+        objects := glob("build/*.o") join(" ")
+        sh(config at("compiler") .. " " .. objects .. " -o build/app")
+    )
+)
+
+build task("test",
+    desc("Run tests")
+    depends("link")
+    action(
+        sh("./build/app --test")
+    )
+)
+
+build task("default",
+    depends("link")
+)
+
+// File tasks for individual files
+build file("build/main.o", list("src/main.c"),
+    action(
+        sh(config at("compiler") .. " " .. config at("flags") .. 
+           " -c src/main.c -o build/main.o")
+    )
+)
+
+// Run build
+build run("default")</code></pre></div></div><h2 id="lessons-learned">Lessons Learned</h2><div class="section"><div class="section-body"><p>These case studies demonstrate several key insights about building real applications in Io:</p><h3 id="strengths">Strengths</h3><ol><li><strong>Rapid Prototyping</strong>: Io's minimal syntax and dynamic nature make it excellent for quickly building working prototypes.</li><li><strong>DSL Creation</strong>: The HTTP server's routing, ORM's query builder, and build system all show how naturally DSLs emerge in Io.</li><li><strong>Flexibility</strong>: The ability to modify anything at runtime made it easy to add features like middleware, validations, and hooks.</li><li><strong>Concurrency</strong>: The <code>@</code> operator and coroutines made async request handling in the web server trivial.</li></ol><h3 id="challenges">Challenges</h3><ol><li><strong>Performance</strong>: For the game engine, Io's interpreted nature and message passing overhead would limit frame rates in a real game.</li><li><strong>Type Safety</strong>: The ORM would benefit from type checking that Io doesn't provide, leading to potential runtime errors.</li><li><strong>Tooling</strong>: Lack of IDE support makes maintaining larger codebases challenging.</li><li><strong>Libraries</strong>: Many features had to be built from scratch due to limited ecosystem.</li></ol><h3 id="best-practices">Best Practices</h3><ol><li><strong>Use Prototypes Effectively</strong>: Define clear prototype hierarchies (Model -> User, Component -> PositionComponent).</li><li><strong>Leverage Message Passing</strong>: The game engine's entity-component system naturally maps to message passing.</li><li><strong>Build Abstractions</strong>: Each case study built higher-level abstractions (Repository, Task, System) on Io's primitives.</li><li><strong>Embrace DSLs</strong>: Don't fight the language&mdash;use its strengths to create domain-appropriate interfaces.</li></ol></div></div><h2 id="conclusion">Conclusion</h2><div class="section"><div class="section-body"><p>These case studies show that Io is capable of building real applications, though with trade-offs. Its strengths in metaprogramming, DSL creation, and rapid prototyping make it excellent for certain domains, while performance-critical or large-scale applications might be better served by other languages. The key is understanding these trade-offs and using Io where its unique capabilities provide the most value.</p></div></div><div class="page-footer"><a class="next-link" href="../Ecosystem-and-Libraries/index.html">Ecosystem and Libraries &rarr;</a></div></div>
+<script src="../colvmn/layout/bundle.js" defer></script>
+  <script type="application/json" id="colvmn-prefetch">{"./_index.json":{"ok":false,"status":404},"./_index.md":{"ok":true,"status":200,"content":"---\ntitle: Case Studies\ntopTitle: Io\nsubtitle: \"Complete Io programs that bring the language's features together.\"\nnextSectionLink: true\n---\n\nThis chapter presents complete, real-world applications built in Io. Each case study demonstrates how Io's features work together to solve practical problems, showing both the elegance and challenges of building substantial systems in the language.\n\n## Case Study 1: Web Server\n\nBuilding a simple but functional HTTP server demonstrates Io's networking, concurrency, and string handling:\n\n```io\n// HTTP Server Implementation\nHttpServer := Object clone\nHttpServer init := method(port,\n    self port := port\n    self routes := Map clone\n    self middlewares := list()\n    self\n)\n\nHttpRequest := Object clone\nHttpRequest parse := method(rawData,\n    lines := rawData split(\"\\r\\n\")\n    if(lines size == 0, return nil)\n    \n    // Parse request line\n    requestLine := lines at(0) split(\" \")\n    self method := requestLine at(0)\n    self path := requestLine at(1)\n    self version := requestLine at(2)\n    \n    // Parse headers\n    self headers := Map clone\n    self body := \"\"\n    \n    bodyStart := false\n    lines slice(1) foreach(line,\n        if(bodyStart,\n            body = body .. line,\n            if(line size == 0,\n                bodyStart = true,\n                parts := line split(\": \")\n                if(parts size == 2,\n                    headers atPut(parts at(0), parts at(1))\n                )\n            )\n        )\n    )\n    \n    // Parse query parameters\n    self params := Map clone\n    if(path containsSeq(\"?\"),\n        parts := path split(\"?\")\n        self path = parts at(0)\n        queryString := parts at(1)\n        \n        queryString split(\"&\") foreach(param,\n            kv := param split(\"=\")\n            if(kv size == 2,\n                params atPut(kv at(0), kv at(1) urlDecode)\n            )\n        )\n    )\n    \n    self\n)\n\nHttpResponse := Object clone\nHttpResponse init := method(\n    self status := 200\n    self headers := Map clone\n    self body := \"\"\n    \n    headers atPut(\"Content-Type\", \"text/html\")\n    headers atPut(\"Server\", \"Io-Server/1.0\")\n    self\n)\n\nHttpResponse setStatus := method(code,\n    status = code\n    self\n)\n\nHttpResponse setHeader := method(key, value,\n    headers atPut(key, value)\n    self\n)\n\nHttpResponse write := method(content,\n    body = body .. content\n    self\n)\n\nHttpResponse json := method(data,\n    setHeader(\"Content-Type\", \"application/json\")\n    write(data asJson)\n    self\n)\n\nHttpResponse build := method(\n    statusText := Map with(\n        200, \"OK\",\n        404, \"Not Found\",\n        500, \"Internal Server Error\"\n    ) at(status, \"Unknown\")\n    \n    result := \"HTTP/1.1 \" .. status .. \" \" .. statusText .. \"\\r\\n\"\n    \n    headers atPut(\"Content-Length\", body size asString)\n    headers foreach(key, value,\n        result = result .. key .. \": \" .. value .. \"\\r\\n\"\n    )\n    \n    result .. \"\\r\\n\" .. body\n)\n\n// Middleware support\nHttpServer use := method(middleware,\n    middlewares append(middleware)\n    self\n)\n\n// Routing\nHttpServer route := method(method, path, handler,\n    key := method .. \":\" .. path\n    routes atPut(key, handler)\n    self\n)\n\nHttpServer get := method(path, handler,\n    route(\"GET\", path, handler)\n)\n\nHttpServer post := method(path, handler,\n    route(\"POST\", path, handler)\n)\n\n// Request handling\nHttpServer handleConnection := method(socket,\n    rawData := socket readUntilSeq(\"\\r\\n\\r\\n\")\n    \n    request := HttpRequest parse(rawData)\n    if(request isNil,\n        socket close\n        return\n    )\n    \n    response := HttpResponse clone init\n    \n    // Run middlewares\n    middlewares foreach(middleware,\n        middleware call(request, response)\n    )\n    \n    // Find route\n    key := request method .. \":\" .. request path\n    handler := routes at(key)\n    \n    if(handler,\n        e := try(\n            handler call(request, response)\n        ) catch(Exception, e,\n            response setStatus(500) write(\"Internal Server Error: \" .. e message)\n        )\n    ,\n        // Try pattern matching for dynamic routes\n        handled := false\n        routes foreach(routeKey, routeHandler,\n            parts := routeKey split(\":\")\n            routeMethod := parts at(0)\n            routePath := parts at(1)\n            \n            if(routeMethod == request method and matchPath(routePath, request path),\n                routeHandler call(request, response)\n                handled = true\n                break\n            )\n        )\n        \n        if(handled not,\n            response setStatus(404) write(\"Not Found\")\n        )\n    )\n    \n    socket write(response build)\n    socket close\n)\n\nHttpServer matchPath := method(pattern, path,\n    // Simple pattern matching (e.g., /users/:id)\n    if(pattern containsSeq(\":\"),\n        patternParts := pattern split(\"/\")\n        pathParts := path split(\"/\")\n        \n        if(patternParts size != pathParts size, return false)\n        \n        patternParts foreach(i, part,\n            if(part beginsWithSeq(\":\") not,\n                if(part != pathParts at(i), return false)\n            )\n        )\n        \n        true\n    ,\n        pattern == path\n    )\n)\n\nHttpServer start := method(\n    server := Socket clone\n    server setHost(\"127.0.0.1\")\n    server setPort(port)\n    server bind\n    server listen\n    \n    (\"Server listening on port \" .. port) println\n    \n    loop(\n        client := server accept\n        @handleConnection(client)  // Handle async\n    )\n)\n\n// Example application\napp := HttpServer clone init(8080)\n\n// Middleware for logging\napp use(block(request, response,\n    (\"[\" .. Date now .. \"] \" .. request method .. \" \" .. request path) println\n))\n\n// Static content\napp get(\"/\", block(request, response,\n    response write(\"\u003ch1>Welcome to Io Web Server\u003c/h1>\")\n    response write(\"\u003cp>A simple server built with Io\u003c/p>\")\n))\n\n// JSON API\napp get(\"/api/info\", block(request, response,\n    info := Map with(\n        \"server\", \"Io-Server\",\n        \"version\", \"1.0\",\n        \"time\", Date now asString\n    )\n    response json(info)\n))\n\n// Dynamic routes\napp get(\"/users/:id\", block(request, response,\n    // Extract ID from path\n    id := request path split(\"/\") at(2)\n    response write(\"\u003ch1>User Profile\u003c/h1>\")\n    response write(\"\u003cp>User ID: \" .. id .. \"\u003c/p>\")\n))\n\n// Form handling\napp post(\"/submit\", block(request, response,\n    // Parse form data from body\n    response write(\"\u003ch1>Form Submitted\u003c/h1>\")\n    response write(\"\u003cp>Data: \" .. request body .. \"\u003c/p>\")\n))\n\n// Start server\napp start\n```\n\n## Case Study 2: Database ORM\n\nA simple object-relational mapper showcasing metaprogramming and DSL capabilities:\n\n```io\n// ORM Implementation\nORM := Object clone\n\n// Database connection (simplified)\nDatabase := Object clone\nDatabase connections := Map clone\n\nDatabase connect := method(name, config,\n    conn := Connection clone init(config)\n    connections atPut(name, conn)\n    conn\n)\n\nConnection := Object clone\nConnection init := method(config,\n    self config := config\n    self tables := Map clone\n    self\n)\n\nConnection execute := method(sql,\n    (\"[SQL] \" .. sql) println\n    // Simulate results\n    list()\n)\n\n// Model base class\nModel := Object clone\nModel tableName := nil\nModel fields := Map clone\nModel connection := nil\n\nModel field := method(name, type,\n    fields atPut(name, Map with(\"type\", type, \"name\", name))\n    \n    // Generate getter\n    self setSlot(name, method(\n        self getSlot(\"_\" .. name)\n    ))\n    \n    // Generate setter\n    self setSlot(\"set\" .. name asCapitalized, method(value,\n        self setSlot(\"_\" .. name, value)\n        self\n    ))\n    \n    self\n)\n\nModel belongsTo := method(name, targetModel,\n    fields atPut(name .. \"_id\", Map with(\"type\", \"INTEGER\", \"name\", name .. \"_id\"))\n    \n    self setSlot(name, method(\n        targetModel findById(self getSlot(\"_\" .. name .. \"_id\"))\n    ))\n    \n    self\n)\n\nModel hasMany := method(name, targetModel, foreignKey,\n    self setSlot(name, method(\n        targetModel where(foreignKey .. \" = \" .. self id)\n    ))\n    \n    self\n)\n\nModel createTable := method(\n    sql := \"CREATE TABLE IF NOT EXISTS \" .. tableName .. \" (\\n\"\n    sql = sql .. \"  id INTEGER PRIMARY KEY AUTOINCREMENT,\\n\"\n    \n    fieldDefs := fields map(name, field,\n        \"  \" .. name .. \" \" .. field at(\"type\")\n    )\n    \n    sql = sql .. fieldDefs join(\",\\n\") .. \"\\n);\"\n    \n    connection execute(sql)\n    self\n)\n\nModel dropTable := method(\n    connection execute(\"DROP TABLE IF EXISTS \" .. tableName)\n    self\n)\n\nModel init := method(\n    fields foreach(name, field,\n        self setSlot(\"_\" .. name, nil)\n    )\n    self setSlot(\"_id\", nil)\n    self\n)\n\nModel save := method(\n    if(_id,\n        update,\n        insert\n    )\n)\n\nModel insert := method(\n    columns := list()\n    values := list()\n    \n    fields foreach(name, field,\n        value := self getSlot(\"_\" .. name)\n        if(value isNil not,\n            columns append(name)\n            values append(\"'\" .. value asString .. \"'\")\n        )\n    )\n    \n    sql := \"INSERT INTO \" .. tableName .. \" (\" .. columns join(\", \") .. \") VALUES (\" .. values join(\", \") .. \")\"\n    \n    connection execute(sql)\n    self _id := connection lastInsertId  // Simulated\n    self\n)\n\nModel update := method(\n    updates := list()\n    \n    fields foreach(name, field,\n        value := self getSlot(\"_\" .. name)\n        if(value isNil not,\n            updates append(name .. \" = '\" .. value asString .. \"'\")\n        )\n    )\n    \n    sql := \"UPDATE \" .. tableName .. \" SET \" .. updates join(\", \") .. \" WHERE id = \" .. _id\n    \n    connection execute(sql)\n    self\n)\n\nModel delete := method(\n    if(_id,\n        connection execute(\"DELETE FROM \" .. tableName .. \" WHERE id = \" .. _id)\n        self _id := nil\n    )\n    self\n)\n\n// Class methods\nModel all := method(\n    sql := \"SELECT * FROM \" .. tableName\n    rows := connection execute(sql)\n    \n    rows map(row, fromRow(row))\n)\n\nModel findById := method(id,\n    sql := \"SELECT * FROM \" .. tableName .. \" WHERE id = \" .. id\n    rows := connection execute(sql)\n    \n    if(rows size > 0,\n        fromRow(rows first),\n        nil\n    )\n)\n\nModel where := method(condition,\n    sql := \"SELECT * FROM \" .. tableName .. \" WHERE \" .. condition\n    rows := connection execute(sql)\n    \n    rows map(row, fromRow(row))\n)\n\nModel fromRow := method(row,\n    instance := self clone init\n    instance _id := row at(\"id\")\n    \n    fields foreach(name, field,\n        instance setSlot(\"_\" .. name, row at(name))\n    )\n    \n    instance\n)\n\n// Query builder\nQueryBuilder := Object clone\nQueryBuilder init := method(model,\n    self model := model\n    self selections := list(\"*\")\n    self conditions := list()\n    self orderBy := nil\n    self limitValue := nil\n    self\n)\n\nQueryBuilder select := method(\n    self selections = call message arguments map(arg,\n        call sender doMessage(arg) asString\n    )\n    self\n)\n\nQueryBuilder where := method(condition,\n    conditions append(condition)\n    self\n)\n\nQueryBuilder order := method(column, direction,\n    orderBy = column .. \" \" .. if(direction, direction, \"ASC\")\n    self\n)\n\nQueryBuilder limit := method(n,\n    limitValue = n\n    self\n)\n\nQueryBuilder build := method(\n    sql := \"SELECT \" .. selections join(\", \") .. \" FROM \" .. model tableName\n    \n    if(conditions size > 0,\n        sql = sql .. \" WHERE \" .. conditions join(\" AND \")\n    )\n    \n    if(orderBy,\n        sql = sql .. \" ORDER BY \" .. orderBy\n    )\n    \n    if(limitValue,\n        sql = sql .. \" LIMIT \" .. limitValue\n    )\n    \n    sql\n)\n\nQueryBuilder execute := method(\n    sql := build\n    rows := model connection execute(sql)\n    rows map(row, model fromRow(row))\n)\n\n// Define models\nUser := Model clone\nUser tableName = \"users\"\nUser connection = Database connect(\"main\", Map with(\"file\", \"app.db\"))\n\nUser field(\"name\", \"VARCHAR(100)\") \\\n    field(\"email\", \"VARCHAR(100)\") \\\n    field(\"age\", \"INTEGER\") \\\n    field(\"created_at\", \"DATETIME\")\n\nUser hasMany(\"posts\", Post, \"user_id\")\n\nPost := Model clone\nPost tableName = \"posts\"\nPost connection = User connection\n\nPost field(\"title\", \"VARCHAR(200)\") \\\n    field(\"content\", \"TEXT\") \\\n    field(\"published\", \"BOOLEAN\") \\\n    field(\"user_id\", \"INTEGER\")\n\nPost belongsTo(\"user\", User)\n\n// Validations\nUser validate := method(\n    errors := list()\n    \n    if(_name isNil or _name size == 0,\n        errors append(\"Name is required\")\n    )\n    \n    if(_email isNil or _email containsSeq(\"@\") not,\n        errors append(\"Invalid email\")\n    )\n    \n    if(_age and (_age \u003c 0 or _age > 150),\n        errors append(\"Invalid age\")\n    )\n    \n    if(errors size > 0,\n        Exception raise(errors join(\", \"))\n    )\n    \n    true\n)\n\nUser beforeSave := method(\n    validate\n    _created_at := Date now\n)\n\n// Usage example\nUser createTable\nPost createTable\n\nuser := User clone init\nuser setName(\"Alice\") setEmail(\"alice@example.com\") setAge(30)\nuser save\n\npost := Post clone init\npost setTitle(\"First Post\") \\\n    setContent(\"Hello, World!\") \\\n    setPublished(true) \\\n    setUserId(user id)\npost save\n\n// Query examples\nallUsers := User all\nyoungUsers := User where(\"age \u003c 25\")\nuserPosts := user posts\n\n// Query builder\nquery := QueryBuilder clone init(User)\nresults := query select(\"name\", \"email\") \\\n                where(\"age > 21\") \\\n                order(\"name\") \\\n                limit(10) \\\n                execute\n```\n\n## Case Study 3: Game Engine\n\nA simple 2D game engine demonstrating real-time systems and graphics:\n\n```io\n// Game Engine Core\nGameEngine := Object clone\nGameEngine init := method(width, height,\n    self width := width\n    self height := height\n    self entities := list()\n    self systems := list()\n    self running := true\n    self fps := 60\n    self frameTime := 1.0 / fps\n    self\n)\n\n// Entity Component System\nEntity := Object clone\nEntity init := method(\n    self id := Random uuid\n    self components := Map clone\n    self active := true\n    self\n)\n\nEntity addComponent := method(name, component,\n    components atPut(name, component)\n    component entity := self\n    self\n)\n\nEntity getComponent := method(name,\n    components at(name)\n)\n\nEntity hasComponent := method(name,\n    components hasKey(name)\n)\n\n// Components\nComponent := Object clone\n\nPositionComponent := Component clone\nPositionComponent init := method(x, y,\n    self x := x\n    self y := y\n    self\n)\n\nVelocityComponent := Component clone\nVelocityComponent init := method(dx, dy,\n    self dx := dx\n    self dy := dy\n    self\n)\n\nSpriteComponent := Component clone\nSpriteComponent init := method(image, width, height,\n    self image := image\n    self width := width\n    self height := height\n    self\n)\n\nColliderComponent := Component clone\nColliderComponent init := method(width, height,\n    self width := width\n    self height := height\n    self\n)\n\nHealthComponent := Component clone\nHealthComponent init := method(maxHealth,\n    self maxHealth := maxHealth\n    self currentHealth := maxHealth\n    self\n)\n\n// Systems\nSystem := Object clone\nSystem init := method(\n    self requiredComponents := list()\n    self\n)\n\nSystem process := method(entity, deltaTime,\n    // Override in subclasses\n)\n\nSystem canProcess := method(entity,\n    requiredComponents all(comp,\n        entity hasComponent(comp)\n    )\n)\n\nMovementSystem := System clone\nMovementSystem requiredComponents = list(\"position\", \"velocity\")\n\nMovementSystem process := method(entity, deltaTime,\n    pos := entity getComponent(\"position\")\n    vel := entity getComponent(\"velocity\")\n    \n    pos x = pos x + vel dx * deltaTime\n    pos y = pos y + vel dy * deltaTime\n)\n\nCollisionSystem := System clone\nCollisionSystem requiredComponents = list(\"position\", \"collider\")\n\nCollisionSystem init := method(\n    resend\n    self collisions := list()\n    self\n)\n\nCollisionSystem update := method(entities, deltaTime,\n    collisions = list()\n    \n    // Check all pairs\n    entities foreach(i, e1,\n        if(canProcess(e1),\n            entities slice(i + 1) foreach(e2,\n                if(canProcess(e2) and checkCollision(e1, e2),\n                    collisions append(list(e1, e2))\n                    onCollision(e1, e2)\n                )\n            )\n        )\n    )\n)\n\nCollisionSystem checkCollision := method(e1, e2,\n    p1 := e1 getComponent(\"position\")\n    c1 := e1 getComponent(\"collider\")\n    p2 := e2 getComponent(\"position\")\n    c2 := e2 getComponent(\"collider\")\n    \n    // AABB collision\n    p1 x \u003c p2 x + c2 width and\n    p1 x + c1 width > p2 x and\n    p1 y \u003c p2 y + c2 height and\n    p1 y + c1 height > p2 y\n)\n\nCollisionSystem onCollision := method(e1, e2,\n    (\"Collision between \" .. e1 id .. \" and \" .. e2 id) println\n)\n\n// Rendering (simulated)\nRenderSystem := System clone\nRenderSystem requiredComponents = list(\"position\", \"sprite\")\n\nRenderSystem init := method(\n    resend\n    self screen := list()\n    self\n)\n\nRenderSystem render := method(entities,\n    // Clear screen\n    screen = list()\n    \n    entities foreach(entity,\n        if(canProcess(entity),\n            pos := entity getComponent(\"position\")\n            sprite := entity getComponent(\"sprite\")\n            \n            screen append(Map with(\n                \"x\", pos x,\n                \"y\", pos y,\n                \"image\", sprite image\n            ))\n        )\n    )\n    \n    // Draw screen (simulated)\n    drawScreen\n)\n\nRenderSystem drawScreen := method(\n    \"Frame:\" println\n    screen foreach(item,\n        (\"  [\" .. item at(\"image\") .. \"] at (\" .. \n         item at(\"x\") round .. \", \" .. item at(\"y\") round .. \")\") println\n    )\n)\n\n// Input handling\nInputManager := Object clone\nInputManager init := method(\n    self keys := Map clone\n    self mouseX := 0\n    self mouseY := 0\n    self\n)\n\nInputManager isKeyPressed := method(key,\n    keys at(key, false)\n)\n\nInputManager setKey := method(key, pressed,\n    keys atPut(key, pressed)\n)\n\n// Game states\nGameState := Object clone\nGameState enter := method()\nGameState exit := method()\nGameState update := method(deltaTime)\nGameState render := method()\n\nMenuState := GameState clone\nMenuState enter := method(\n    \"Entering menu\" println\n    self selectedOption := 0\n    self options := list(\"Start Game\", \"Options\", \"Quit\")\n)\n\nMenuState update := method(deltaTime,\n    // Handle menu input\n    if(InputManager isKeyPressed(\"up\"),\n        selectedOption = (selectedOption - 1) max(0)\n    )\n    if(InputManager isKeyPressed(\"down\"),\n        selectedOption = (selectedOption + 1) min(options size - 1)\n    )\n    if(InputManager isKeyPressed(\"enter\"),\n        handleSelection\n    )\n)\n\nMenuState handleSelection := method(\n    option := options at(selectedOption)\n    if(option == \"Start Game\",\n        GameEngine setState(PlayState)\n    )\n    if(option == \"Quit\",\n        GameEngine stop\n    )\n)\n\nPlayState := GameState clone\nPlayState enter := method(\n    \"Starting game\" println\n    createLevel\n)\n\nPlayState createLevel := method(\n    // Create player\n    player := Entity clone init\n    player addComponent(\"position\", PositionComponent clone init(100, 100))\n    player addComponent(\"velocity\", VelocityComponent clone init(0, 0))\n    player addComponent(\"sprite\", SpriteComponent clone init(\"player\", 32, 32))\n    player addComponent(\"collider\", ColliderComponent clone init(32, 32))\n    player addComponent(\"health\", HealthComponent clone init(100))\n    \n    GameEngine addEntity(player)\n    \n    // Create enemies\n    3 repeat(i,\n        enemy := Entity clone init\n        enemy addComponent(\"position\", \n            PositionComponent clone init(200 + i * 50, 200))\n        enemy addComponent(\"velocity\", \n            VelocityComponent clone init(Random value * 20 - 10, Random value * 20 - 10))\n        enemy addComponent(\"sprite\", \n            SpriteComponent clone init(\"enemy\", 24, 24))\n        enemy addComponent(\"collider\", \n            ColliderComponent clone init(24, 24))\n        \n        GameEngine addEntity(enemy)\n    )\n)\n\nPlayState update := method(deltaTime,\n    // Handle player input\n    player := GameEngine entities first\n    if(player,\n        vel := player getComponent(\"velocity\")\n        \n        vel dx = 0\n        vel dy = 0\n        \n        if(InputManager isKeyPressed(\"left\"), vel dx = -100)\n        if(InputManager isKeyPressed(\"right\"), vel dx = 100)\n        if(InputManager isKeyPressed(\"up\"), vel dy = -100)\n        if(InputManager isKeyPressed(\"down\"), vel dy = 100)\n    )\n)\n\n// Main game engine methods\nGameEngine addEntity := method(entity,\n    entities append(entity)\n    entity\n)\n\nGameEngine removeEntity := method(entity,\n    entities remove(entity)\n)\n\nGameEngine addSystem := method(system,\n    systems append(system)\n    system\n)\n\nGameEngine setState := method(state,\n    if(hasSlot(\"currentState\") and currentState,\n        currentState exit\n    )\n    currentState := state\n    currentState enter\n)\n\nGameEngine update := method(deltaTime,\n    // Update current state\n    if(currentState,\n        currentState update(deltaTime)\n    )\n    \n    // Update systems\n    systems foreach(system,\n        if(system hasSlot(\"update\"),\n            system update(entities, deltaTime),\n            entities foreach(entity,\n                if(system canProcess(entity),\n                    system process(entity, deltaTime)\n                )\n            )\n        )\n    )\n    \n    // Remove inactive entities\n    entities = entities select(e, e active)\n)\n\nGameEngine render := method(\n    if(currentState,\n        currentState render\n    )\n    \n    renderSystem render(entities)\n)\n\nGameEngine run := method(\n    lastTime := Date now\n    \n    while(running,\n        currentTime := Date now\n        deltaTime := currentTime - lastTime\n        \n        if(deltaTime >= frameTime,\n            update(deltaTime)\n            render\n            lastTime = currentTime\n        )\n        \n        // Small delay to prevent CPU spinning\n        wait(0.001)\n    )\n)\n\nGameEngine stop := method(\n    running = false\n)\n\n// Initialize and run game\ngame := GameEngine clone init(800, 600)\n\n// Add systems\ngame addSystem(MovementSystem clone)\ngame addSystem(CollisionSystem clone init)\ngame renderSystem := RenderSystem clone init\n\n// Set initial state\ngame setState(MenuState)\n\n// Simulate some gameplay\n\"=== Game Engine Demo ===\" println\nMenuState handleSelection  // Start game\n\n// Run a few frames\n5 repeat(i,\n    (\"Frame \" .. i) println\n    game update(game frameTime)\n    game render\n    wait(0.1)\n)\n```\n\n## Case Study 4: Build System\n\nA build system similar to Make or Rake:\n\n```io\n// Build System\nBuildSystem := Object clone\nBuildSystem init := method(\n    self tasks := Map clone\n    self dependencies := Map clone\n    self executed := list()\n    self config := Map clone\n    self\n)\n\nTask := Object clone\nTask init := method(name, deps, action,\n    self name := name\n    self dependencies := if(deps, deps, list())\n    self action := action\n    self outputs := list()\n    self inputs := list()\n    self\n)\n\nTask execute := method(context,\n    (\"Executing task: \" .. name) println\n    if(action,\n        action call(context)\n    )\n)\n\nTask upToDate := method(\n    if(outputs size == 0 or inputs size == 0,\n        return false\n    )\n    \n    outputTime := outputs map(f, File with(f) lastModified) min\n    inputTime := inputs map(f, File with(f) lastModified) max\n    \n    outputTime > inputTime\n)\n\n// DSL for defining tasks\nBuildSystem task := method(name,\n    t := Task clone init(name, list(), nil)\n    tasks atPut(name, t)\n    \n    self currentTask := t\n    call evalArgAt(0)\n    t\n)\n\nBuildSystem desc := method(description,\n    if(currentTask,\n        currentTask description := description\n    )\n)\n\nBuildSystem depends := method(\n    deps := call message arguments map(arg,\n        call sender doMessage(arg) asString\n    )\n    if(currentTask,\n        currentTask dependencies = deps\n    )\n)\n\nBuildSystem action := method(\n    if(currentTask,\n        currentTask action = call argAt(0)\n    )\n)\n\nBuildSystem file := method(output, inputs,\n    name := output\n    t := Task clone init(name, list(), nil)\n    t outputs = list(output)\n    t inputs = if(inputs type == \"List\", inputs, list(inputs))\n    \n    tasks atPut(name, t)\n    self currentTask := t\n    \n    call evalArgAt(2)\n    t\n)\n\n// Running tasks\nBuildSystem run := method(taskName,\n    executed = list()\n    executeTask(taskName)\n)\n\nBuildSystem executeTask := method(taskName,\n    if(executed contains(taskName),\n        return\n    )\n    \n    task := tasks at(taskName)\n    if(task isNil,\n        Exception raise(\"Task not found: \" .. taskName)\n    )\n    \n    // Check if up to date\n    if(task upToDate,\n        (\"Task \" .. taskName .. \" is up to date\") println\n        return\n    )\n    \n    // Execute dependencies first\n    task dependencies foreach(dep,\n        executeTask(dep)\n    )\n    \n    // Execute the task\n    task execute(self)\n    executed append(taskName)\n)\n\n// Utilities\nBuildSystem sh := method(command,\n    (\"$ \" .. command) println\n    System system(command)\n)\n\nBuildSystem glob := method(pattern,\n    Directory with(\".\") files select(f,\n        f name matchesRegex(pattern)\n    ) map(name)\n)\n\nBuildSystem mkdir := method(path,\n    Directory with(path) create\n)\n\nBuildSystem cp := method(src, dest,\n    File with(src) copyTo(dest)\n)\n\nBuildSystem rm := method(path,\n    File with(path) remove\n)\n\n// Configuration\nBuildSystem configure := method(\n    call message arguments foreach(arg,\n        key := arg name\n        value := call sender doMessage(arg arguments at(0))\n        config atPut(key, value)\n    )\n    self\n)\n\n// Example Buildfile\nbuild := BuildSystem clone init\n\nbuild configure(\n    compiler: \"gcc\",\n    flags: \"-Wall -O2\",\n    srcDir: \"src\",\n    buildDir: \"build\"\n)\n\nbuild task(\"clean\",\n    desc(\"Remove all build artifacts\")\n    action(\n        rm(config at(\"buildDir\"))\n        \"Cleaned\" println\n    )\n)\n\nbuild task(\"init\",\n    desc(\"Initialize build directory\")\n    action(\n        mkdir(config at(\"buildDir\"))\n    )\n)\n\nbuild task(\"compile\",\n    desc(\"Compile C sources\")\n    depends(\"init\")\n    action(\n        sources := glob(\"src/*.c\")\n        sources foreach(src,\n            obj := src replaceSeq(\".c\", \".o\") replaceSeq(\"src/\", \"build/\")\n            sh(config at(\"compiler\") .. \" \" .. config at(\"flags\") .. \n               \" -c \" .. src .. \" -o \" .. obj)\n        )\n    )\n)\n\nbuild task(\"link\",\n    desc(\"Link object files\")\n    depends(\"compile\")\n    action(\n        objects := glob(\"build/*.o\") join(\" \")\n        sh(config at(\"compiler\") .. \" \" .. objects .. \" -o build/app\")\n    )\n)\n\nbuild task(\"test\",\n    desc(\"Run tests\")\n    depends(\"link\")\n    action(\n        sh(\"./build/app --test\")\n    )\n)\n\nbuild task(\"default\",\n    depends(\"link\")\n)\n\n// File tasks for individual files\nbuild file(\"build/main.o\", list(\"src/main.c\"),\n    action(\n        sh(config at(\"compiler\") .. \" \" .. config at(\"flags\") .. \n           \" -c src/main.c -o build/main.o\")\n    )\n)\n\n// Run build\nbuild run(\"default\")\n```\n\n## Lessons Learned\n\nThese case studies demonstrate several key insights about building real applications in Io:\n\n### Strengths\n\n1. **Rapid Prototyping**: Io's minimal syntax and dynamic nature make it excellent for quickly building working prototypes.\n\n2. **DSL Creation**: The HTTP server's routing, ORM's query builder, and build system all show how naturally DSLs emerge in Io.\n\n3. **Flexibility**: The ability to modify anything at runtime made it easy to add features like middleware, validations, and hooks.\n\n4. **Concurrency**: The `@` operator and coroutines made async request handling in the web server trivial.\n\n### Challenges\n\n1. **Performance**: For the game engine, Io's interpreted nature and message passing overhead would limit frame rates in a real game.\n\n2. **Type Safety**: The ORM would benefit from type checking that Io doesn't provide, leading to potential runtime errors.\n\n3. **Tooling**: Lack of IDE support makes maintaining larger codebases challenging.\n\n4. **Libraries**: Many features had to be built from scratch due to limited ecosystem.\n\n### Best Practices\n\n1. **Use Prototypes Effectively**: Define clear prototype hierarchies (Model -> User, Component -> PositionComponent).\n\n2. **Leverage Message Passing**: The game engine's entity-component system naturally maps to message passing.\n\n3. **Build Abstractions**: Each case study built higher-level abstractions (Repository, Task, System) on Io's primitives.\n\n4. **Embrace DSLs**: Don't fight the language—use its strengths to create domain-appropriate interfaces.\n\n## Conclusion\n\nThese case studies show that Io is capable of building real applications, though with trade-offs. Its strengths in metaprogramming, DSL creation, and rapid prototyping make it excellent for certain domains, while performance-critical or large-scale applications might be better served by other languages. The key is understanding these trade-offs and using Io where its unique capabilities provide the most value.\n"},"../_index.json":{"ok":true,"status":200,"content":"{\n  \"title\": \"The Io Programming Language\",\n  \"topTitle\": \"Io\",\n  \"subtitle\": \"A comprehensive guide to prototype-based programming with Io.\",\n  \"content\": [\n    {\n      \"type\": \"ContentText\",\n      \"content\": \"This book provides an in-depth exploration of the Io programming language, designed for experienced programmers who want to understand prototype-based object-oriented programming. Through detailed comparisons with mainstream languages like JavaScript, Python, Ruby, and Java, readers will gain practical insights into Io's unique paradigm.\"\n    },\n    {\n      \"type\": \"ContentCards\",\n      \"title\": \"Chapters\",\n      \"columns\": 2,\n      \"items\": [\n        \"Preface\",\n        \"Introduction\",\n        \"Getting-Started\",\n        \"Everything-is-an-Object\",\n        \"Prototypes-Not-Classes\",\n        \"Messages-and-Slots\",\n        \"Cloning-and-Inheritance\",\n        \"Control-Flow\",\n        \"Collections\",\n        \"Blocks-and-Closures\",\n        \"Exceptions\",\n        \"Metaprogramming\",\n        \"Concurrency\",\n        \"Domain-Specific-Languages\",\n        \"C-Integration\",\n        \"Real-World-Patterns\",\n        \"Case-Studies\",\n        \"Ecosystem-and-Libraries\",\n        \"Conclusion\"\n      ]\n    }\n  ]\n}\n"},"../Ecosystem-and-Libraries/_index.json":{"ok":false,"status":404},"../Ecosystem-and-Libraries/_index.md":{"ok":true,"status":200,"content":"---\ntitle: Ecosystem and Libraries\ntopTitle: Io\nsubtitle: \"The available libraries, tools, and community resources around Io.\"\nnextSectionLink: true\n---\n\nWhile Io has a smaller ecosystem compared to mainstream languages, it offers a thoughtfully curated set of libraries and tools. This chapter explores the available resources, how to use them effectively, and how to contribute to the Io ecosystem.\n\n## Core Libraries\n\nIo comes with several built-in libraries that extend its capabilities:\n\n### File I/O and System\n\n```io\n// File operations\nfile := File with(\"data.txt\")\n\n// Reading\nif(file exists,\n    contents := file contents\n    lines := file readLines\n    \n    // Read with encoding\n    file setEncoding(\"UTF-8\")\n    text := file contents\n)\n\n// Writing\nfile openForWriting\nfile write(\"Hello, World!\\n\")\nfile write(\"Line 2\\n\")\nfile close\n\n// Appending\nfile openForAppending\nfile write(\"Additional line\\n\")\nfile close\n\n// File information\nfile size println\nfile lastModified println\nfile isDirectory println\n\n// Directory operations\ndir := Directory with(\"./src\")\ndir files foreach(file,\n    file name println\n)\n\ndir directories foreach(subdir,\n    subdir path println\n)\n\n// Recursive directory walking\ndir recursiveFilesOfType(\"io\") foreach(ioFile,\n    ioFile path println\n)\n\n// System operations\nSystem system(\"ls -la\")  // Execute shell command\nSystem getEnvironmentVariable(\"HOME\") println\nSystem setEnvironmentVariable(\"MY_VAR\", \"value\")\nSystem exit(0)\n```\n\n### Networking\n\n```io\n// HTTP Client\nurl := URL with(\"https://api.example.com/data\")\nurl fetch println  // Simple GET request\n\n// With headers\nurl setHeader(\"Authorization\", \"Bearer token\")\nurl setHeader(\"Content-Type\", \"application/json\")\nresponse := url fetch\n\n// POST request\nurl setMethod(\"POST\")\nurl setBody(\"{\\\"key\\\": \\\"value\\\"}\")\nresponse := url fetch\n\n// Socket programming\n// Server\nserver := Socket clone\nserver setHost(\"127.0.0.1\")\nserver setPort(8080)\nserver bind\nserver listen\n\nloop(\n    client := server accept\n    @(\n        data := client readUntilSeq(\"\\n\")\n        client write(\"Echo: \" .. data)\n        client close\n    )\n)\n\n// Client\nclient := Socket clone\nclient setHost(\"127.0.0.1\")\nclient setPort(8080)\nclient connect\nclient write(\"Hello, server!\\n\")\nresponse := client readUntilSeq(\"\\n\")\nresponse println\nclient close\n```\n\n### Date and Time\n\n```io\n// Current date/time\nnow := Date now\nnow println\n\n// Date components\nnow year println\nnow month println\nnow day println\nnow hour println\nnow minute println\nnow second println\n\n// Date arithmetic\ntomorrow := now + Duration days(1)\nnextWeek := now + Duration weeks(1)\nhourAgo := now - Duration hours(1)\n\n// Formatting\nnow asString(\"%Y-%m-%d %H:%M:%S\") println\nnow asString(\"%B %d, %Y\") println\n\n// Parsing\ndate := Date fromString(\"2024-01-15\", \"%Y-%m-%d\")\n\n// Duration\nduration := Duration clone\nduration setDays(2) setHours(3) setMinutes(30)\nduration asSeconds println\n\n// Timing code\nstart := Date now\n// ... code to time ...\nelapsed := Date now - start\n(\"Elapsed: \" .. elapsed) println\n```\n\n### Regular Expressions\n\n```io\n// Basic matching\ntext := \"The year 2024 has 365 days\"\ntext matchesRegex(\"\\\\d+\") println  // true\n\n// Finding matches\nmatch := text findRegex(\"\\\\d+\")\nmatch start println  // Starting position\nmatch end println    // Ending position\nmatch string println // Matched string\n\n// All matches\nmatches := text allMatchesOfRegex(\"\\\\d+\")\nmatches foreach(m,\n    m string println  // 2024, 365\n)\n\n// Replacement\nresult := text replaceFirstRegex(\"\\\\d+\", \"N\")\nresult println  // The year N has 365 days\n\nresult := text replaceAllRegex(\"\\\\d+\", \"N\")\nresult println  // The year N has N days\n\n// Capture groups\nemail := \"user@example.com\"\npattern := \"(\\\\w+)@([\\\\w.]+)\"\nif(match := email matchesOfRegex(pattern),\n    match at(1) println  // user\n    match at(2) println  // example.com\n)\n\n// Compiling regex for reuse\nregex := Regex with(\"\\\\b\\\\w{5}\\\\b\")  // 5-letter words\nregex matches(\"hello\") println  // true\nregex matches(\"hi\") println     // false\n```\n\n### JSON\n\n```io\n// Parsing JSON\njsonString := \"\"\"\n{\n    \"name\": \"Alice\",\n    \"age\": 30,\n    \"interests\": [\"coding\", \"music\"],\n    \"address\": {\n        \"city\": \"New York\",\n        \"zip\": \"10001\"\n    }\n}\n\"\"\"\n\ndata := jsonString parseJson\ndata at(\"name\") println  // Alice\ndata at(\"interests\") at(0) println  // coding\ndata at(\"address\") at(\"city\") println  // New York\n\n// Creating JSON\nperson := Map with(\n    \"name\", \"Bob\",\n    \"age\", 25,\n    \"active\", true,\n    \"tags\", list(\"developer\", \"gamer\")\n)\n\njson := person asJson\njson println  // {\"name\":\"Bob\",\"age\":25,\"active\":true,\"tags\":[\"developer\",\"gamer\"]}\n\n// Pretty printing\njson := person asJson(true)  // Pretty format\n```\n\n### XML\n\n```io\n// Parsing XML\nxmlString := \"\"\"\n\u003croot>\n    \u003cperson id=\"1\">\n        \u003cname>Alice\u003c/name>\n        \u003cage>30\u003c/age>\n    \u003c/person>\n    \u003cperson id=\"2\">\n        \u003cname>Bob\u003c/name>\n        \u003cage>25\u003c/age>\n    \u003c/person>\n\u003c/root>\n\"\"\"\n\ndoc := SGML parseString(xmlString)\nroot := doc root\n\n// Navigate XML\npeople := root elementsWithName(\"person\")\npeople foreach(person,\n    id := person attributeAt(\"id\")\n    name := person elementWithName(\"name\") text\n    age := person elementWithName(\"age\") text\n    (id .. \": \" .. name .. \" (\" .. age .. \")\") println\n)\n\n// Build XML\ndoc := SGML clone\nroot := doc addElement(\"catalog\")\n\nbook := root addElement(\"book\")\nbook setAttribute(\"isbn\", \"123456\")\nbook addElement(\"title\") setText(\"Io Programming\")\nbook addElement(\"author\") setText(\"Jane Doe\")\nbook addElement(\"price\") setText(\"29.99\")\n\ndoc asString println\n```\n\n## Addon System\n\nIo's addon system allows loading C-based extensions:\n\n```io\n// Loading addons\nAddon load(\"Socket\")   // Network programming\nAddon load(\"Random\")   // Random number generation\nAddon load(\"Regex\")    // Regular expressions\nAddon load(\"SQLite\")   // Database access\n\n// Check available addons\nAddon availableAddons foreach(name,\n    name println\n)\n\n// Addon information\naddon := Addon named(\"Socket\")\naddon path println\naddon dependencies println\n```\n\n## Database Libraries\n\n### SQLite\n\n```io\n// SQLite integration\ndb := SQLite clone\ndb open(\"app.db\")\n\n// Create table\ndb exec(\"\"\"\n    CREATE TABLE IF NOT EXISTS users (\n        id INTEGER PRIMARY KEY,\n        name TEXT NOT NULL,\n        email TEXT UNIQUE,\n        created_at DATETIME DEFAULT CURRENT_TIMESTAMP\n    )\n\"\"\")\n\n// Insert data\nstmt := db prepare(\"INSERT INTO users (name, email) VALUES (?, ?)\")\nstmt bind(1, \"Alice\")\nstmt bind(2, \"alice@example.com\")\nstmt step\nstmt reset\n\n// Query data\nresults := db exec(\"SELECT * FROM users WHERE name LIKE 'A%'\")\nresults foreach(row,\n    (\"ID: \" .. row at(\"id\") .. \", Name: \" .. row at(\"name\")) println\n)\n\n// Prepared statements with results\nstmt := db prepare(\"SELECT * FROM users WHERE id = ?\")\nstmt bind(1, 1)\n\nwhile(stmt step == SQLite ROW,\n    name := stmt columnText(1)\n    email := stmt columnText(2)\n    (name .. \" - \" .. email) println\n)\n\nstmt finalize\ndb close\n\n// Transactions\ndb begin\ntry(\n    db exec(\"INSERT INTO users ...\")\n    db exec(\"UPDATE users ...\")\n    db commit\n) catch(Exception, e,\n    db rollback\n    e raise\n)\n```\n\n## Graphics and GUI\n\n### OpenGL\n\n```io\n// OpenGL addon (if available)\nAddon load(\"OpenGL\")\n\n// Basic window setup\nwindow := GLApp clone\nwindow width := 800\nwindow height := 600\nwindow title := \"Io OpenGL\"\n\nwindow draw := method(\n    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)\n    \n    glBegin(GL_TRIANGLES)\n    glColor3f(1, 0, 0)\n    glVertex2f(-0.5, -0.5)\n    glColor3f(0, 1, 0)\n    glVertex2f(0.5, -0.5)\n    glColor3f(0, 0, 1)\n    glVertex2f(0, 0.5)\n    glEnd\n    \n    swapBuffers\n)\n\nwindow run\n```\n\n### Image Processing\n\n```io\n// Image addon\nAddon load(\"Image\")\n\n// Load and manipulate images\nimg := Image clone\nimg open(\"photo.jpg\")\n\n// Get information\nimg width println\nimg height println\nimg componentCount println  // Color channels\n\n// Basic operations\nimg resize(800, 600)\nimg crop(100, 100, 400, 300)\nimg flip(\"horizontal\")\nimg rotate(90)\n\n// Filters\nimg blur(5)\nimg sharpen\nimg adjustBrightness(1.2)\nimg adjustContrast(1.5)\nimg grayscale\n\n// Save\nimg save(\"modified.png\")\n\n// Create new image\ncanvas := Image clone\ncanvas allocate(500, 500, 3)  // RGB\ncanvas fill(Color with(0.5, 0.5, 1.0))  // Light blue\n\n// Draw on image\ncanvas drawLine(0, 0, 500, 500, Color red)\ncanvas drawCircle(250, 250, 100, Color green)\ncanvas drawRectangle(100, 100, 300, 200, Color blue)\n\ncanvas save(\"drawing.png\")\n```\n\n## Cryptography\n\n```io\n// Crypto addon\nAddon load(\"MD5\")\nAddon load(\"SHA1\")\n\n// Hashing\ntext := \"Hello, World!\"\n\nmd5 := MD5 clone\nmd5 appendSeq(text)\nmd5 hexDigest println  // MD5 hash\n\nsha := SHA1 clone\nsha appendSeq(text)\nsha hexDigest println  // SHA1 hash\n\n// File hashing\nfile := File with(\"document.pdf\")\nhash := MD5 hashFile(file path)\nhash println\n\n// HMAC (if available)\nkey := \"secret-key\"\nmessage := \"Important message\"\nhmac := HMAC sha256(key, message)\nhmac println\n```\n\n## Third-Party Libraries\n\n### Package Management\n\nWhile Io doesn't have a centralized package manager like npm or pip, libraries can be managed through:\n\n```io\n// Simple package loader\nPackageLoader := Object clone\nPackageLoader paths := list(\n    \"~/.io/packages\",\n    \"/usr/local/io/packages\",\n    \"./packages\"\n)\n\nPackageLoader load := method(name,\n    paths foreach(path,\n        packageFile := Path with(path, name, \"init.io\")\n        if(File with(packageFile) exists,\n            doFile(packageFile)\n            return true\n        )\n    )\n    Exception raise(\"Package not found: \" .. name)\n)\n\n// Usage\nPackageLoader load(\"web-framework\")\nPackageLoader load(\"test-framework\")\n```\n\n### Creating Libraries\n\nStructure for an Io library:\n\n```io\n// mylib/init.io - Entry point\nMyLib := Object clone\nMyLib version := \"1.0.0\"\n\n// Load components\ndoRelativeFile(\"core.io\")\ndoRelativeFile(\"utils.io\")\ndoRelativeFile(\"extensions.io\")\n\n// Export public API\nMyLib\n\n// mylib/core.io\nMyLib Core := Object clone\nMyLib Core process := method(data,\n    // Core functionality\n)\n\n// mylib/utils.io\nMyLib Utils := Object clone\nMyLib Utils helper := method(\n    // Utility functions\n)\n\n// mylib/extensions.io\n// Extend built-in types\nList customMethod := method(\n    // Extended functionality\n)\n```\n\n### Testing Frameworks\n\nSimple testing framework example:\n\n```io\n// SimpleTest framework\nTest := Object clone\nTest suites := list()\n\nTest describe := method(name, block,\n    suite := TestSuite clone\n    suite name := name\n    suite tests := list()\n    \n    suite it := method(desc, testBlock,\n        tests append(list(desc, testBlock))\n    )\n    \n    block call(suite)\n    suites append(suite)\n)\n\nTest run := method(\n    totalTests := 0\n    passedTests := 0\n    \n    suites foreach(suite,\n        (\"\\n\" .. suite name) println\n        (\"=\" repeated(suite name size)) println\n        \n        suite tests foreach(test,\n            desc := test at(0)\n            block := test at(1)\n            totalTests = totalTests + 1\n            \n            e := try(\n                block call\n                (\"  ✓ \" .. desc) println\n                passedTests = passedTests + 1\n            ) catch(Exception, e,\n                (\"  ✗ \" .. desc) println\n                (\"    \" .. e message) println\n            )\n        )\n    )\n    \n    (\"\\n\" .. passedTests .. \"/\" .. totalTests .. \" tests passed\") println\n)\n\n// Usage\nTest describe(\"Array operations\", suite,\n    suite it(\"should append elements\", \n        arr := list(1, 2)\n        arr append(3)\n        assert(arr size == 3)\n    )\n    \n    suite it(\"should remove elements\",\n        arr := list(1, 2, 3)\n        arr remove(2)\n        assert(arr contains(2) not)\n    )\n)\n\nTest run\n```\n\n## Documentation Tools\n\n### Generating Documentation\n\n```io\n// Simple documentation generator\nDocGen := Object clone\nDocGen init := method(\n    self docs := Map clone\n    self\n)\n\nDocGen document := method(obj, name,\n    info := Map clone\n    info atPut(\"name\", name)\n    info atPut(\"type\", obj type)\n    info atPut(\"slots\", obj slotNames sort)\n    \n    // Extract method signatures\n    methods := Map clone\n    obj slotNames foreach(slotName,\n        slot := obj getSlot(slotName)\n        if(slot type == \"Block\",\n            methods atPut(slotName, slot argumentNames)\n        )\n    )\n    info atPut(\"methods\", methods)\n    \n    docs atPut(name, info)\n    self\n)\n\nDocGen generateMarkdown := method(\n    md := \"# API Documentation\\n\\n\"\n    \n    docs foreach(name, info,\n        md = md .. \"## \" .. name .. \"\\n\\n\"\n        md = md .. \"**Type**: \" .. info at(\"type\") .. \"\\n\\n\"\n        \n        methods := info at(\"methods\")\n        if(methods size > 0,\n            md = md .. \"### Methods\\n\\n\"\n            methods foreach(method, args,\n                md = md .. \"- `\" .. method .. \"(\" .. args join(\", \") .. \")`\\n\"\n            )\n            md = md .. \"\\n\"\n        )\n    )\n    \n    md\n)\n\n// Usage\ndocGen := DocGen clone init\ndocGen document(MyClass, \"MyClass\")\ndocGen document(MyUtils, \"MyUtils\")\n\nFile with(\"API.md\") openForWriting write(docGen generateMarkdown) close\n```\n\n## Development Tools\n\n### REPL Enhancements\n\n```io\n// Enhanced REPL\nREPL := Object clone\nREPL history := list()\nREPL commands := Map clone\n\nREPL registerCommand := method(name, block,\n    commands atPut(name, block)\n)\n\nREPL run := method(\n    loop(\n        \"io> \" print\n        input := File standardInput readLine\n        \n        if(input beginsWithSeq(\":\"),\n            // Handle commands\n            cmd := input afterSeq(\":\")\n            if(commands hasKey(cmd),\n                commands at(cmd) call,\n                (\"Unknown command: \" .. cmd) println\n            ),\n            // Evaluate Io code\n            history append(input)\n            e := try(\n                result := doString(input)\n                (\"==> \" .. result) println\n            ) catch(Exception, e,\n                (\"Error: \" .. e message) println\n            )\n        )\n    )\n)\n\n// Register commands\nREPL registerCommand(\"help\", block(\n    \"Available commands:\" println\n    commands keys foreach(cmd,\n        (\"  :\" .. cmd) println\n    )\n))\n\nREPL registerCommand(\"history\", block(\n    history foreach(i, line,\n        (i .. \": \" .. line) println\n    )\n))\n\nREPL registerCommand(\"clear\", block(\n    System system(\"clear\")\n))\n\nREPL registerCommand(\"quit\", block(\n    System exit\n))\n\n// Run enhanced REPL\nREPL run\n```\n\n### Debugging Tools\n\n```io\n// Simple debugger\nDebugger := Object clone\nDebugger breakpoints := list()\nDebugger stepping := false\n\nObject debug := method(\n    Debugger enter(self, call)\n)\n\nDebugger enter := method(context, callObj,\n    \"=== Debugger ===\" println\n    (\"Context: \" .. context type) println\n    (\"Location: \" .. callObj message) println\n    \n    loop(\n        \"> \" print\n        cmd := File standardInput readLine split(\" \")\n        \n        if(cmd at(0) == \"inspect\",\n            target := cmd at(1)\n            if(target,\n                obj := context doString(target)\n                obj slotNames foreach(slot,\n                    (\"  \" .. slot .. \": \" .. obj getSlot(slot) type) println\n                )\n            )\n        )\n        \n        if(cmd at(0) == \"eval\",\n            code := cmd slice(1) join(\" \")\n            result := context doString(code)\n            result println\n        )\n        \n        if(cmd at(0) == \"continue\",\n            break\n        )\n        \n        if(cmd at(0) == \"help\",\n            \"Commands: inspect \u003cobj>, eval \u003ccode>, continue, help\" println\n        )\n    )\n)\n```\n\n## Community Resources\n\n### Finding Libraries\n\nCommon sources for Io libraries:\n\n1. **GitHub**: Search for \"io-language\" or \"iolanguage\" topics\n2. **Official Repository**: https://github.com/IoLanguage/io\n3. **Community Addons**: Various developers maintain addon collections\n\n### Contributing\n\nCreating an addon for the community:\n\n```io\n// addon.io - Addon metadata\nAddon := Object clone\nAddon name := \"MyAddon\"\nAddon version := \"1.0.0\"\nAddon author := \"Your Name\"\nAddon description := \"Description of what your addon does\"\nAddon license := \"MIT\"\nAddon dependencies := list(\"OtherAddon\")\n\nAddon install := method(\n    // Installation logic\n    \"Installing \" .. name .. \" v\" .. version println\n    \n    // Copy files\n    // Compile C extensions if needed\n    // Register with Io\n)\n\nAddon uninstall := method(\n    // Cleanup logic\n)\n\n// Make addon discoverable\nAddon register\n```\n\n## Performance Libraries\n\n### Profiling\n\n```io\n// Simple profiler\nProfiler := Object clone\nProfiler data := Map clone\n\nObject profile := method(name,\n    start := Date now\n    result := call evalArgAt(0)\n    elapsed := Date now - start\n    \n    if(Profiler data hasKey(name) not,\n        Profiler data atPut(name, list(0, 0))\n    )\n    \n    stats := Profiler data at(name)\n    stats atPut(0, stats at(0) + 1)  // Count\n    stats atPut(1, stats at(1) + elapsed)  // Total time\n    \n    result\n)\n\nProfiler report := method(\n    \"=== Profile Report ===\" println\n    data foreach(name, stats,\n        count := stats at(0)\n        total := stats at(1)\n        avg := total / count\n        \n        (name .. \": \" .. count .. \" calls, \" ..\n         total .. \"s total, \" .. avg .. \"s average\") println\n    )\n)\n\n// Usage\nprofile(\"database\",\n    // Expensive operation\n    wait(0.1)\n)\n\nProfiler report\n```\n\n## Future of Io Libraries\n\nThe Io ecosystem continues to evolve with:\n\n1. **WebAssembly Support**: Potential for running Io in browsers\n2. **Modern Addons**: Integration with contemporary libraries\n3. **Cloud Services**: AWS, Azure, GCP client libraries\n4. **Machine Learning**: Bindings to TensorFlow, PyTorch\n5. **Improved Tooling**: Better IDE support, linters, formatters\n\n## Conclusion\n\nWhile Io's ecosystem is smaller than mainstream languages, it provides essential functionality and excellent extensibility through its addon system. The simplicity of creating libraries, combined with seamless C integration, means that missing functionality can often be added quickly. The community, though small, is knowledgeable and helpful, making it easy to find or create the tools you need.\n\nThe key to working effectively with Io's ecosystem is understanding that it favors simplicity and extensibility over having every possible library pre-built. This philosophy encourages developers to understand their tools deeply and create exactly what they need.\n"}}</script>
+</body>
+</html>

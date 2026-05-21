@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="stylesheet" href="../colvmn/style.css">
+<title>Prototypes, Not Classes – Io</title>
+  <link rel="alternate" type="text/plain" title="llms.txt" href="/llms.txt">
+  <meta name="description" content="How Io replaces classes and instances with a single uniform notion of object.">
+</head>
+<body>
+<div class="page loaded"><div class="header"><div><h1>Prototypes, Not Classes</h1><a class="back-link" href="../index.html">&larr; The Io Programming Language</a></div><a class="brand" href="../index.html">Io</a></div><p class="intro">How Io replaces classes and instances with a single uniform notion of object.</p><nav class="toc"><ul><li><a href="#the-class-based-world">The Class-Based World</a></li><li><a href="#the-prototype-based-world">The Prototype-Based World</a></li><li><a href="#understanding-cloning">Understanding Cloning</a></li><li><a href="#the-prototype-chain">The Prototype Chain</a></li><li><a href="#dynamic-prototype-modification">Dynamic Prototype Modification</a></li><li><a href="#multiple-prototypes">Multiple Prototypes</a></li><li><a href="#comparing-approaches-class-vs-prototype">Comparing Approaches: Class vs Prototype</a></li><li><a href="#the-power-of-prototypes">The Power of Prototypes</a></li><li><a href="#delegation-vs-inheritance">Delegation vs Inheritance</a></li><li><a href="#practical-patterns">Practical Patterns</a></li><li><a href="#javascript-a-familiar-prototype-system">JavaScript: A Familiar Prototype System</a></li><li><a href="#common-misconceptions">Common Misconceptions</a></li><li><a href="#exercises">Exercises</a></li><li><a href="#real-world-implications">Real-World Implications</a></li><li><a href="#conclusion">Conclusion</a></li></ul></nav><div class="section"><div class="section-body"><p>Most object-oriented languages use classes as templates or blueprints for creating objects. You define a class, then instantiate objects from it. There's a fundamental distinction between the template (class) and the things created from it (instances).</p><p>Io takes a different approach: prototype-based inheritance. There are no classes, only objects. New objects are created by cloning existing objects, and objects can serve as prototypes for other objects. This might seem like a small change, but it fundamentally alters how you think about and structure programs.</p></div></div><h2 id="the-class-based-world">The Class-Based World</h2><div class="section"><div class="section-body"><p>Let's start with what you probably know. In a class-based language like Java:</p><pre><code>// Define a class (template)
+class Animal {
+    String name;
+    
+    void speak() {
+        System.out.println("Some sound");
+    }
+}
+
+// Define a subclass
+class Dog extends Animal {
+    void speak() {
+        System.out.println("Woof!");
+    }
+}
+
+// Create instances
+Dog fido = new Dog();
+Dog rover = new Dog();</code></pre><p>The key points:</p><ul><li><code>Animal</code> and <code>Dog</code> are classes (templates)</li><li><code>fido</code> and <code>rover</code> are instances (objects)</li><li>Classes and instances are fundamentally different things</li><li>Inheritance happens between classes</li></ul></div></div><h2 id="the-prototype-based-world">The Prototype-Based World</h2><div class="section"><div class="section-body"><p>In Io, there are no classes:</p><pre><code>// Create an object to serve as a prototype
+Animal := Object clone
+Animal speak := method("Some sound" println)
+
+// Create another object using Animal as a prototype
+Dog := Animal clone
+Dog speak := method("Woof!" println)
+
+// Create more objects using Dog as a prototype
+fido := Dog clone
+rover := Dog clone</code></pre><p>The key differences:</p><ul><li><code>Animal</code>, <code>Dog</code>, <code>fido</code>, and <code>rover</code> are all objects</li><li>No fundamental distinction between "classes" and "instances"</li><li>Objects are created by cloning other objects</li><li>Any object can serve as a prototype for other objects</li></ul></div></div><h2 id="understanding-cloning">Understanding Cloning</h2><div class="section"><div class="section-body"><p>When you clone an object in Io, you don't copy all its slots. Instead, you create a new, empty object that maintains a reference to its prototype:</p><pre><code>Animal := Object clone
+Animal name := "Generic Animal"
+Animal speak := method(name println)
+
+dog := Animal clone
+
+// dog doesn't have its own 'name' slot
+dog hasLocalSlot("name") println    // false
+
+// But it can access 'name' through its prototype
+dog name println                     // "Generic Animal"
+
+// Now give dog its own name
+dog name = "Fido"
+dog hasLocalSlot("name") println    // true
+dog name println                     // "Fido"
+
+// Animal's name is unchanged
+Animal name println                  // "Generic Animal"</code></pre><p>This is called <strong>differential inheritance</strong>&mdash;objects only store their differences from their prototypes.</p></div></div><h2 id="the-prototype-chain">The Prototype Chain</h2><div class="section"><div class="section-body"><p>When you send a message to an object, Io looks for a matching slot:</p><ol><li>First in the object itself</li><li>Then in its prototype</li><li>Then in the prototype's prototype</li><li>And so on until it reaches Object</li></ol><pre><code>// Create a chain of prototypes
+Organism := Object clone
+Organism live := method("Living..." println)
+
+Animal := Organism clone
+Animal move := method("Moving..." println)
+
+Dog := Animal clone
+Dog bark := method("Woof!" println)
+
+fido := Dog clone
+fido name := "Fido"
+
+// fido can access methods from anywhere in the chain
+fido live    // "Living..." (from Organism)
+fido move    // "Moving..." (from Animal)
+fido bark    // "Woof!" (from Dog)
+
+// You can inspect the chain
+fido proto == Dog println           // true
+fido proto proto == Animal println  // true
+fido proto proto proto == Organism println  // true</code></pre></div></div><h2 id="dynamic-prototype-modification">Dynamic Prototype Modification</h2><div class="section"><div class="section-body"><p>Since prototypes are just objects, you can modify them at runtime, and all objects using that prototype see the changes:</p><pre><code>Dog := Object clone
+fido := Dog clone
+rover := Dog clone
+
+// Add a method to Dog
+Dog bark := method("Woof!" println)
+
+// Both fido and rover can now bark
+fido bark    // "Woof!"
+rover bark   // "Woof!"
+
+// Modify the method
+Dog bark = method("WOOF! WOOF!" println)
+
+// The change affects all dogs
+fido bark    // "WOOF! WOOF!"
+rover bark   // "WOOF! WOOF!"</code></pre><p>Try doing that with classes in Java! You'd need complex reflection APIs, and even then, you couldn't modify existing instances.</p></div></div><h2 id="multiple-prototypes">Multiple Prototypes</h2><div class="section"><div class="section-body"><p>Io supports multiple inheritance through its <code>Protos</code> list:</p><pre><code>// Create two prototypes
+Flyable := Object clone
+Flyable fly := method("Flying..." println)
+
+Swimmable := Object clone
+Swimmable swim := method("Swimming..." println)
+
+// Create an object with multiple prototypes
+Duck := Object clone
+Duck appendProto(Flyable)
+Duck appendProto(Swimmable)
+
+mallard := Duck clone
+mallard fly     // "Flying..."
+mallard swim    // "Swimming..."
+
+// Inspect the prototype list
+Duck protos println  // list(Object_0x..., Flyable_0x..., Swimmable_0x...)</code></pre><p>The search order for slots is depth-first through the <code>Protos</code> list.</p></div></div><h2 id="comparing-approaches-class-vs-prototype">Comparing Approaches: Class vs Prototype</h2><div class="section"><div class="section-body"><p>Let's implement the same concept in both paradigms to see the differences.</p><h3 id="class-based-python">Class-Based (Python)</h3><pre><code>class Shape:
+    def __init__(self):
+        self.x = 0
+        self.y = 0
+    
+    def move(self, dx, dy):
+        self.x += dx
+        self.y += dy
+
+class Circle(Shape):
+    def __init__(self, radius):
+        super().__init__()
+        self.radius = radius
+    
+    def area(self):
+        return 3.14159 * self.radius ** 2
+
+# Usage
+circle = Circle(5)
+circle.move(10, 20)
+print(circle.area())
+
+# Can't easily create a one-off variation
+# Would need to define a new class</code></pre><h3 id="prototype-based-io">Prototype-Based (Io)</h3><pre><code>Shape := Object clone
+Shape x := 0
+Shape y := 0
+Shape move := method(dx, dy,
+    x = x + dx
+    y = y + dy
+)
+
+Circle := Shape clone
+Circle radius := 0
+Circle area := method(
+    3.14159 * radius * radius
+)
+
+// Usage
+circle := Circle clone
+circle radius = 5
+circle move(10, 20)
+circle area println
+
+// Easy to create one-off variations
+specialCircle := Circle clone
+specialCircle area = method(
+    "Special area: " print
+    resend  // Call the original method
+)
+specialCircle area  // "Special area: 78.53975"</code></pre></div></div><h2 id="the-power-of-prototypes">The Power of Prototypes</h2><div class="section"><div class="section-body"><h3 id="1-objects-as-classes">1. Objects as Classes</h3><p>In Io, objects can act as classes when needed:</p><pre><code>// Person acts like a class
+Person := Object clone
+Person init := method(
+    self name := "Unknown"
+    self age := 0
+    self
+)
+
+Person create := method(n, a,
+    clone init name = n age = a
+)
+
+// Usage feels class-like
+alice := Person create("Alice", 30)
+bob := Person create("Bob", 25)</code></pre><h3 id="2-one-off-objects">2. One-Off Objects</h3><p>You can create unique objects without defining a "class":</p><pre><code>// Create a unique object with no "class"
+singleton := Object clone
+singleton data := Map clone
+singleton store := method(key, value,
+    data atPut(key, value)
+)
+singleton retrieve := method(key,
+    data at(key)
+)
+
+// Use it directly
+singleton store("user", "Alice")
+singleton retrieve("user") println  // "Alice"</code></pre><h3 id="3-runtime-class-modification">3. Runtime Class Modification</h3><p>You can fundamentally change what a "class" does:</p><pre><code>Number := Object clone
+Number value := 0
+Number + := method(n,
+    result := Number clone
+    result value = self value + n value
+    result
+)
+
+// Create numbers
+five := Number clone value = 5
+three := Number clone value = 3
+
+// Now change how Number works
+Number + = method(n,
+    result := Number clone
+    result value = self value * n value  // Multiply instead!
+    result
+)
+
+// Existing numbers use the new behavior
+eight := five + three
+eight value println  // 15 (multiplication!)</code></pre></div></div><h2 id="delegation-vs-inheritance">Delegation vs Inheritance</h2><div class="section"><div class="section-body"><p>Prototype-based languages use delegation rather than inheritance. When an object doesn't have a slot, it delegates to its prototype:</p><pre><code>Account := Object clone
+Account balance := 0
+Account deposit := method(amount,
+    balance = balance + amount
+    self
+)
+
+savings := Account clone
+savings deposit(100)
+
+// Let's trace what happens:
+// 1. savings receives 'deposit' message
+// 2. savings doesn't have 'deposit' slot
+// 3. savings delegates to Account
+// 4. Account's deposit method runs
+// 5. But 'self' is still savings
+// 6. So savings's balance is updated
+
+savings balance println    // 100
+Account balance println    // 0 (unchanged)</code></pre><p>This is subtly different from class-based inheritance where methods are copied or looked up in a class hierarchy.</p></div></div><h2 id="practical-patterns">Practical Patterns</h2><div class="section"><div class="section-body"><h3 id="the-constructor-pattern">The Constructor Pattern</h3><p>While Io doesn't have constructors, you can create them:</p><pre><code>Person := Object clone
+Person init := method(name, age,
+    self name := name
+    self age := age
+    self
+)
+
+Person new := method(name, age,
+    self clone init(name, age)
+)
+
+// Usage
+alice := Person new("Alice", 30)</code></pre><h3 id="the-mixin-pattern">The Mixin Pattern</h3><p>Use prototypes as mixins for shared behavior:</p><pre><code>// Define mixins
+Timestamped := Object clone
+Timestamped createdAt := Date now
+Timestamped age := method(
+    Date now - createdAt
+)
+
+Serializable := Object clone
+Serializable toJson := method(
+    // Implementation
+)
+
+// Use mixins
+Document := Object clone
+Document appendProto(Timestamped)
+Document appendProto(Serializable)
+
+doc := Document clone
+doc age println
+doc toJson</code></pre><h3 id="the-factory-pattern">The Factory Pattern</h3><p>Objects can create other objects with specific configurations:</p><pre><code>ShapeFactory := Object clone
+ShapeFactory circle := method(radius,
+    c := Object clone
+    c radius := radius
+    c area := method(3.14159 * radius * radius)
+    c
+)
+
+ShapeFactory rectangle := method(width, height,
+    r := Object clone
+    r width := width
+    r height := height
+    r area := method(width * height)
+    r
+)
+
+// Usage
+myCircle := ShapeFactory circle(5)
+myRect := ShapeFactory rectangle(10, 20)</code></pre></div></div><h2 id="javascript-a-familiar-prototype-system">JavaScript: A Familiar Prototype System</h2><div class="section"><div class="section-body"><p>If you know JavaScript, you've already used prototype-based programming:</p><pre><code>// JavaScript (before ES6 classes)
+function Animal(name) {
+    this.name = name;
+}
+
+Animal.prototype.speak = function() {
+    console.log("Some sound");
+};
+
+function Dog(name) {
+    Animal.call(this, name);
+}
+
+Dog.prototype = Object.create(Animal.prototype);
+Dog.prototype.bark = function() {
+    console.log("Woof!");
+};</code></pre><p>But JavaScript complicated things with constructor functions and later added class syntax as sugar. Io keeps prototypes pure and simple.</p></div></div><h2 id="common-misconceptions">Common Misconceptions</h2><div class="section"><div class="section-body"><h3 id="no-classes-means-no-structure">"No Classes Means No Structure"</h3><p>False. You can create well-structured programs with prototypes:</p><pre><code>// Define clear prototype hierarchies
+Vehicle := Object clone
+Vehicle speed := 0
+
+Car := Vehicle clone
+Car wheels := 4
+
+ElectricCar := Car clone
+ElectricCar batteryLevel := 100
+
+// The structure is clear and maintainable</code></pre><h3 id="prototypes-are-just-classes-with-different-syntax">"Prototypes Are Just Classes With Different Syntax"</h3><p>False. Prototypes are more flexible:</p><pre><code>// Start with a prototype
+Dog := Object clone
+Dog bark := method("Woof!" println)
+
+fido := Dog clone
+
+// Later, change fido's prototype!
+Cat := Object clone
+Cat meow := method("Meow!" println)
+
+fido protos = list(Cat)
+fido meow  // "Meow!" - fido is now a cat!</code></pre><p>You can't change an object's class at runtime in most class-based languages.</p><h3 id="multiple-inheritance-is-always-confusing">"Multiple Inheritance Is Always Confusing"</h3><p>Io's prototype lists make multiple inheritance explicit and controllable:</p><pre><code>A := Object clone
+A foo := method("A's foo" println)
+
+B := Object clone  
+B foo := method("B's foo" println)
+
+C := Object clone
+C appendProto(A)
+C appendProto(B)
+
+C foo  // "A's foo" (A comes first in the list)
+
+// Reorder to change priority
+C protos = list(B, A)
+C foo  // "B's foo" (B now comes first)</code></pre></div></div><h2 id="exercises">Exercises</h2><div class="section"><div class="section-body"><ol><li><strong>Prototype Chain Explorer</strong>: Write a method that prints an object's complete prototype chain with indentation showing the hierarchy.</li><li><strong>Class Emulator</strong>: Create a <code>Class</code> object that provides <code>new</code>, <code>extends</code>, and other class-like conveniences while using prototypes underneath.</li><li><strong>Multiple Inheritance Diamond</strong>: Create a diamond inheritance pattern (D inherits from B and C, which both inherit from A) and explore how Io resolves method conflicts.</li><li><strong>Dynamic Reclassing</strong>: Write a <code>become</code> method that changes an object's prototype chain to make it "become" an instance of a different prototype.</li><li><strong>Prototype Versioning</strong>: Implement a system where objects can "lock" to a specific version of their prototype, unaffected by later prototype modifications.</li></ol></div></div><h2 id="real-world-implications">Real-World Implications</h2><div class="section"><div class="section-body"><p>Prototype-based programming shines in certain scenarios:</p><ol><li><strong>Rapid Prototyping</strong>: Create and modify objects on the fly without defining classes</li><li><strong>Dynamic Systems</strong>: Systems where object behavior needs to change at runtime</li><li><strong>DSLs</strong>: Domain-specific languages where objects morph based on context</li><li><strong>Learning</strong>: Understanding prototypes deepens your understanding of JavaScript</li><li><strong>Simplicity</strong>: No distinction between classes and objects means fewer concepts</li></ol></div></div><h2 id="conclusion">Conclusion</h2><div class="section"><div class="section-body"><p>Prototype-based programming isn't just "classes with different syntax"&mdash;it's a fundamentally different way of thinking about objects and inheritance. Instead of rigid templates (classes) and instances, you have a fluid world where any object can serve as a template for others, where inheritance is delegation, and where the structure of your program can change at runtime.</p><p>This flexibility can be overwhelming at first, especially if you're used to the safety of static classes. But it can also be liberating. You're not constrained by decisions made at compile time. You can experiment, evolve, and adapt your objects as your understanding of the problem grows.</p><p>In the next chapter, we'll dive deeper into how objects communicate through Io's message passing system&mdash;the heartbeat of the language.</p></div></div><div class="page-footer"><a class="next-link" href="../Messages-and-Slots/index.html">Messages and Slots &rarr;</a></div></div>
+<script src="../colvmn/layout/bundle.js" defer></script>
+  <script type="application/json" id="colvmn-prefetch">{"./_index.json":{"ok":false,"status":404},"./_index.md":{"ok":true,"status":200,"content":"---\ntitle: Prototypes, Not Classes\ntopTitle: Io\nsubtitle: \"How Io replaces classes and instances with a single uniform notion of object.\"\nnextSectionLink: true\n---\n\nMost object-oriented languages use classes as templates or blueprints for creating objects. You define a class, then instantiate objects from it. There's a fundamental distinction between the template (class) and the things created from it (instances).\n\nIo takes a different approach: prototype-based inheritance. There are no classes, only objects. New objects are created by cloning existing objects, and objects can serve as prototypes for other objects. This might seem like a small change, but it fundamentally alters how you think about and structure programs.\n\n## The Class-Based World\n\nLet's start with what you probably know. In a class-based language like Java:\n\n```java\n// Define a class (template)\nclass Animal {\n    String name;\n    \n    void speak() {\n        System.out.println(\"Some sound\");\n    }\n}\n\n// Define a subclass\nclass Dog extends Animal {\n    void speak() {\n        System.out.println(\"Woof!\");\n    }\n}\n\n// Create instances\nDog fido = new Dog();\nDog rover = new Dog();\n```\n\nThe key points:\n- `Animal` and `Dog` are classes (templates)\n- `fido` and `rover` are instances (objects)\n- Classes and instances are fundamentally different things\n- Inheritance happens between classes\n\n## The Prototype-Based World\n\nIn Io, there are no classes:\n\n```io\n// Create an object to serve as a prototype\nAnimal := Object clone\nAnimal speak := method(\"Some sound\" println)\n\n// Create another object using Animal as a prototype\nDog := Animal clone\nDog speak := method(\"Woof!\" println)\n\n// Create more objects using Dog as a prototype\nfido := Dog clone\nrover := Dog clone\n```\n\nThe key differences:\n- `Animal`, `Dog`, `fido`, and `rover` are all objects\n- No fundamental distinction between \"classes\" and \"instances\"\n- Objects are created by cloning other objects\n- Any object can serve as a prototype for other objects\n\n## Understanding Cloning\n\nWhen you clone an object in Io, you don't copy all its slots. Instead, you create a new, empty object that maintains a reference to its prototype:\n\n```io\nAnimal := Object clone\nAnimal name := \"Generic Animal\"\nAnimal speak := method(name println)\n\ndog := Animal clone\n\n// dog doesn't have its own 'name' slot\ndog hasLocalSlot(\"name\") println    // false\n\n// But it can access 'name' through its prototype\ndog name println                     // \"Generic Animal\"\n\n// Now give dog its own name\ndog name = \"Fido\"\ndog hasLocalSlot(\"name\") println    // true\ndog name println                     // \"Fido\"\n\n// Animal's name is unchanged\nAnimal name println                  // \"Generic Animal\"\n```\n\nThis is called **differential inheritance**—objects only store their differences from their prototypes.\n\n## The Prototype Chain\n\nWhen you send a message to an object, Io looks for a matching slot:\n1. First in the object itself\n2. Then in its prototype\n3. Then in the prototype's prototype\n4. And so on until it reaches Object\n\n```io\n// Create a chain of prototypes\nOrganism := Object clone\nOrganism live := method(\"Living...\" println)\n\nAnimal := Organism clone\nAnimal move := method(\"Moving...\" println)\n\nDog := Animal clone\nDog bark := method(\"Woof!\" println)\n\nfido := Dog clone\nfido name := \"Fido\"\n\n// fido can access methods from anywhere in the chain\nfido live    // \"Living...\" (from Organism)\nfido move    // \"Moving...\" (from Animal)\nfido bark    // \"Woof!\" (from Dog)\n\n// You can inspect the chain\nfido proto == Dog println           // true\nfido proto proto == Animal println  // true\nfido proto proto proto == Organism println  // true\n```\n\n## Dynamic Prototype Modification\n\nSince prototypes are just objects, you can modify them at runtime, and all objects using that prototype see the changes:\n\n```io\nDog := Object clone\nfido := Dog clone\nrover := Dog clone\n\n// Add a method to Dog\nDog bark := method(\"Woof!\" println)\n\n// Both fido and rover can now bark\nfido bark    // \"Woof!\"\nrover bark   // \"Woof!\"\n\n// Modify the method\nDog bark = method(\"WOOF! WOOF!\" println)\n\n// The change affects all dogs\nfido bark    // \"WOOF! WOOF!\"\nrover bark   // \"WOOF! WOOF!\"\n```\n\nTry doing that with classes in Java! You'd need complex reflection APIs, and even then, you couldn't modify existing instances.\n\n## Multiple Prototypes\n\nIo supports multiple inheritance through its `Protos` list:\n\n```io\n// Create two prototypes\nFlyable := Object clone\nFlyable fly := method(\"Flying...\" println)\n\nSwimmable := Object clone\nSwimmable swim := method(\"Swimming...\" println)\n\n// Create an object with multiple prototypes\nDuck := Object clone\nDuck appendProto(Flyable)\nDuck appendProto(Swimmable)\n\nmallard := Duck clone\nmallard fly     // \"Flying...\"\nmallard swim    // \"Swimming...\"\n\n// Inspect the prototype list\nDuck protos println  // list(Object_0x..., Flyable_0x..., Swimmable_0x...)\n```\n\nThe search order for slots is depth-first through the `Protos` list.\n\n## Comparing Approaches: Class vs Prototype\n\nLet's implement the same concept in both paradigms to see the differences.\n\n### Class-Based (Python)\n\n```python\nclass Shape:\n    def __init__(self):\n        self.x = 0\n        self.y = 0\n    \n    def move(self, dx, dy):\n        self.x += dx\n        self.y += dy\n\nclass Circle(Shape):\n    def __init__(self, radius):\n        super().__init__()\n        self.radius = radius\n    \n    def area(self):\n        return 3.14159 * self.radius ** 2\n\n# Usage\ncircle = Circle(5)\ncircle.move(10, 20)\nprint(circle.area())\n\n# Can't easily create a one-off variation\n# Would need to define a new class\n```\n\n### Prototype-Based (Io)\n\n```io\nShape := Object clone\nShape x := 0\nShape y := 0\nShape move := method(dx, dy,\n    x = x + dx\n    y = y + dy\n)\n\nCircle := Shape clone\nCircle radius := 0\nCircle area := method(\n    3.14159 * radius * radius\n)\n\n// Usage\ncircle := Circle clone\ncircle radius = 5\ncircle move(10, 20)\ncircle area println\n\n// Easy to create one-off variations\nspecialCircle := Circle clone\nspecialCircle area = method(\n    \"Special area: \" print\n    resend  // Call the original method\n)\nspecialCircle area  // \"Special area: 78.53975\"\n```\n\n## The Power of Prototypes\n\n### 1. Objects as Classes\n\nIn Io, objects can act as classes when needed:\n\n```io\n// Person acts like a class\nPerson := Object clone\nPerson init := method(\n    self name := \"Unknown\"\n    self age := 0\n    self\n)\n\nPerson create := method(n, a,\n    clone init name = n age = a\n)\n\n// Usage feels class-like\nalice := Person create(\"Alice\", 30)\nbob := Person create(\"Bob\", 25)\n```\n\n### 2. One-Off Objects\n\nYou can create unique objects without defining a \"class\":\n\n```io\n// Create a unique object with no \"class\"\nsingleton := Object clone\nsingleton data := Map clone\nsingleton store := method(key, value,\n    data atPut(key, value)\n)\nsingleton retrieve := method(key,\n    data at(key)\n)\n\n// Use it directly\nsingleton store(\"user\", \"Alice\")\nsingleton retrieve(\"user\") println  // \"Alice\"\n```\n\n### 3. Runtime Class Modification\n\nYou can fundamentally change what a \"class\" does:\n\n```io\nNumber := Object clone\nNumber value := 0\nNumber + := method(n,\n    result := Number clone\n    result value = self value + n value\n    result\n)\n\n// Create numbers\nfive := Number clone value = 5\nthree := Number clone value = 3\n\n// Now change how Number works\nNumber + = method(n,\n    result := Number clone\n    result value = self value * n value  // Multiply instead!\n    result\n)\n\n// Existing numbers use the new behavior\neight := five + three\neight value println  // 15 (multiplication!)\n```\n\n## Delegation vs Inheritance\n\nPrototype-based languages use delegation rather than inheritance. When an object doesn't have a slot, it delegates to its prototype:\n\n```io\nAccount := Object clone\nAccount balance := 0\nAccount deposit := method(amount,\n    balance = balance + amount\n    self\n)\n\nsavings := Account clone\nsavings deposit(100)\n\n// Let's trace what happens:\n// 1. savings receives 'deposit' message\n// 2. savings doesn't have 'deposit' slot\n// 3. savings delegates to Account\n// 4. Account's deposit method runs\n// 5. But 'self' is still savings\n// 6. So savings's balance is updated\n\nsavings balance println    // 100\nAccount balance println    // 0 (unchanged)\n```\n\nThis is subtly different from class-based inheritance where methods are copied or looked up in a class hierarchy.\n\n## Practical Patterns\n\n### The Constructor Pattern\n\nWhile Io doesn't have constructors, you can create them:\n\n```io\nPerson := Object clone\nPerson init := method(name, age,\n    self name := name\n    self age := age\n    self\n)\n\nPerson new := method(name, age,\n    self clone init(name, age)\n)\n\n// Usage\nalice := Person new(\"Alice\", 30)\n```\n\n### The Mixin Pattern\n\nUse prototypes as mixins for shared behavior:\n\n```io\n// Define mixins\nTimestamped := Object clone\nTimestamped createdAt := Date now\nTimestamped age := method(\n    Date now - createdAt\n)\n\nSerializable := Object clone\nSerializable toJson := method(\n    // Implementation\n)\n\n// Use mixins\nDocument := Object clone\nDocument appendProto(Timestamped)\nDocument appendProto(Serializable)\n\ndoc := Document clone\ndoc age println\ndoc toJson\n```\n\n### The Factory Pattern\n\nObjects can create other objects with specific configurations:\n\n```io\nShapeFactory := Object clone\nShapeFactory circle := method(radius,\n    c := Object clone\n    c radius := radius\n    c area := method(3.14159 * radius * radius)\n    c\n)\n\nShapeFactory rectangle := method(width, height,\n    r := Object clone\n    r width := width\n    r height := height\n    r area := method(width * height)\n    r\n)\n\n// Usage\nmyCircle := ShapeFactory circle(5)\nmyRect := ShapeFactory rectangle(10, 20)\n```\n\n## JavaScript: A Familiar Prototype System\n\nIf you know JavaScript, you've already used prototype-based programming:\n\n```javascript\n// JavaScript (before ES6 classes)\nfunction Animal(name) {\n    this.name = name;\n}\n\nAnimal.prototype.speak = function() {\n    console.log(\"Some sound\");\n};\n\nfunction Dog(name) {\n    Animal.call(this, name);\n}\n\nDog.prototype = Object.create(Animal.prototype);\nDog.prototype.bark = function() {\n    console.log(\"Woof!\");\n};\n```\n\nBut JavaScript complicated things with constructor functions and later added class syntax as sugar. Io keeps prototypes pure and simple.\n\n## Common Misconceptions\n\n### \"No Classes Means No Structure\"\n\nFalse. You can create well-structured programs with prototypes:\n\n```io\n// Define clear prototype hierarchies\nVehicle := Object clone\nVehicle speed := 0\n\nCar := Vehicle clone\nCar wheels := 4\n\nElectricCar := Car clone\nElectricCar batteryLevel := 100\n\n// The structure is clear and maintainable\n```\n\n### \"Prototypes Are Just Classes With Different Syntax\"\n\nFalse. Prototypes are more flexible:\n\n```io\n// Start with a prototype\nDog := Object clone\nDog bark := method(\"Woof!\" println)\n\nfido := Dog clone\n\n// Later, change fido's prototype!\nCat := Object clone\nCat meow := method(\"Meow!\" println)\n\nfido protos = list(Cat)\nfido meow  // \"Meow!\" - fido is now a cat!\n```\n\nYou can't change an object's class at runtime in most class-based languages.\n\n### \"Multiple Inheritance Is Always Confusing\"\n\nIo's prototype lists make multiple inheritance explicit and controllable:\n\n```io\nA := Object clone\nA foo := method(\"A's foo\" println)\n\nB := Object clone  \nB foo := method(\"B's foo\" println)\n\nC := Object clone\nC appendProto(A)\nC appendProto(B)\n\nC foo  // \"A's foo\" (A comes first in the list)\n\n// Reorder to change priority\nC protos = list(B, A)\nC foo  // \"B's foo\" (B now comes first)\n```\n\n## Exercises\n\n1. **Prototype Chain Explorer**: Write a method that prints an object's complete prototype chain with indentation showing the hierarchy.\n\n2. **Class Emulator**: Create a `Class` object that provides `new`, `extends`, and other class-like conveniences while using prototypes underneath.\n\n3. **Multiple Inheritance Diamond**: Create a diamond inheritance pattern (D inherits from B and C, which both inherit from A) and explore how Io resolves method conflicts.\n\n4. **Dynamic Reclassing**: Write a `become` method that changes an object's prototype chain to make it \"become\" an instance of a different prototype.\n\n5. **Prototype Versioning**: Implement a system where objects can \"lock\" to a specific version of their prototype, unaffected by later prototype modifications.\n\n## Real-World Implications\n\nPrototype-based programming shines in certain scenarios:\n\n1. **Rapid Prototyping**: Create and modify objects on the fly without defining classes\n2. **Dynamic Systems**: Systems where object behavior needs to change at runtime\n3. **DSLs**: Domain-specific languages where objects morph based on context\n4. **Learning**: Understanding prototypes deepens your understanding of JavaScript\n5. **Simplicity**: No distinction between classes and objects means fewer concepts\n\n## Conclusion\n\nPrototype-based programming isn't just \"classes with different syntax\"—it's a fundamentally different way of thinking about objects and inheritance. Instead of rigid templates (classes) and instances, you have a fluid world where any object can serve as a template for others, where inheritance is delegation, and where the structure of your program can change at runtime.\n\nThis flexibility can be overwhelming at first, especially if you're used to the safety of static classes. But it can also be liberating. You're not constrained by decisions made at compile time. You can experiment, evolve, and adapt your objects as your understanding of the problem grows.\n\nIn the next chapter, we'll dive deeper into how objects communicate through Io's message passing system—the heartbeat of the language.\n"},"../_index.json":{"ok":true,"status":200,"content":"{\n  \"title\": \"The Io Programming Language\",\n  \"topTitle\": \"Io\",\n  \"subtitle\": \"A comprehensive guide to prototype-based programming with Io.\",\n  \"content\": [\n    {\n      \"type\": \"ContentText\",\n      \"content\": \"This book provides an in-depth exploration of the Io programming language, designed for experienced programmers who want to understand prototype-based object-oriented programming. Through detailed comparisons with mainstream languages like JavaScript, Python, Ruby, and Java, readers will gain practical insights into Io's unique paradigm.\"\n    },\n    {\n      \"type\": \"ContentCards\",\n      \"title\": \"Chapters\",\n      \"columns\": 2,\n      \"items\": [\n        \"Preface\",\n        \"Introduction\",\n        \"Getting-Started\",\n        \"Everything-is-an-Object\",\n        \"Prototypes-Not-Classes\",\n        \"Messages-and-Slots\",\n        \"Cloning-and-Inheritance\",\n        \"Control-Flow\",\n        \"Collections\",\n        \"Blocks-and-Closures\",\n        \"Exceptions\",\n        \"Metaprogramming\",\n        \"Concurrency\",\n        \"Domain-Specific-Languages\",\n        \"C-Integration\",\n        \"Real-World-Patterns\",\n        \"Case-Studies\",\n        \"Ecosystem-and-Libraries\",\n        \"Conclusion\"\n      ]\n    }\n  ]\n}\n"},"../Messages-and-Slots/_index.json":{"ok":false,"status":404},"../Messages-and-Slots/_index.md":{"ok":true,"status":200,"content":"---\ntitle: Messages and Slots\ntopTitle: Io\nsubtitle: \"The two mechanisms that drive every computation in Io.\"\nnextSectionLink: true\n---\n\nAt the heart of Io lies a simple but powerful idea: all computation happens through message passing. Objects communicate by sending messages to each other, and objects respond to messages by looking up slots. This chapter explores this fundamental mechanism in depth.\n\n## The Anatomy of a Message\n\nWhen you write this in Io:\n\n```io\nperson setName(\"Alice\")\n```\n\nWhat actually happens? Let's break it down:\n\n1. `person` is the **receiver** - the object receiving the message\n2. `setName` is the **message name** (or selector)\n3. `\"Alice\"` is the **argument** to the message\n4. The entire expression is a **message send**\n\nBut here's where it gets interesting. Messages are objects too:\n\n```io\n// Create a message object\nmsg := message(person setName(\"Alice\"))\n\n// Inspect it\nmsg name println          // setName\nmsg arguments println     // list(Message_0x...)\nmsg arguments first code println  // \"Alice\"\n\n// Execute it\nmsg doInContext(Lobby)    // Actually calls person setName(\"Alice\")\n```\n\n## Slots: The Object's Memory\n\nSlots are named storage locations in objects. They can hold any value:\n\n```io\nobj := Object clone\n\n// Create slots with different values\nobj number := 42                    // Number\nobj text := \"hello\"                 // String\nobj method := method(x, x * 2)      // Method\nobj child := Object clone            // Another object\nobj flag := true                     // Boolean\n\n// List all slots\nobj slotNames println\n// list(number, text, method, child, flag)\n\n// Check for slots\nobj hasSlot(\"number\") println       // true\nobj hasSlot(\"missing\") println      // false\n\n// Get slot values\nobj getSlot(\"number\") println       // 42\nobj getSlot(\"method\") println       // method(x, ...)\n```\n\n## The Message Resolution Algorithm\n\nWhen an object receives a message, Io follows a specific algorithm to find the corresponding slot:\n\n```io\nAnimal := Object clone\nAnimal speak := method(\"generic sound\" println)\n\nDog := Animal clone\nDog speak := method(\"woof\" println)\nDog wagTail := method(\"wagging...\" println)\n\nrover := Dog clone\nrover name := \"Rover\"\n\n// When rover receives 'speak':\nrover speak\n// 1. Look for 'speak' in rover - not found\n// 2. Look for 'speak' in rover's proto (Dog) - found!\n// 3. Execute Dog's speak method with rover as self\n\n// When rover receives 'name':\nrover name\n// 1. Look for 'name' in rover - found!\n// 2. Return the value\n\n// Visual representation:\n/*\n    Object\n      ↑\n    Animal (speak: \"generic sound\")\n      ↑\n     Dog (speak: \"woof\", wagTail)\n      ↑\n    rover (name: \"Rover\")\n*/\n```\n\n## Creating and Modifying Slots\n\nIo distinguishes between creating new slots and updating existing ones:\n\n```io\nobj := Object clone\n\n// Create a new slot with :=\nobj x := 10\nobj hasSlot(\"x\") println         // true\n\n// Update existing slot with =\nobj x = 20\nobj x println                    // 20\n\n// Trying to update non-existent slot fails\nobj y = 30                       // Exception: Slot y not found\n\n// But you can use setSlot to create or update\nobj setSlot(\"y\", 30)            // Creates if doesn't exist\nobj y println                    // 30\n\n// Remove slots\nobj removeSlot(\"y\")\nobj hasSlot(\"y\") println        // false\n```\n\nThis distinction helps catch typos:\n\n```io\ncounter := 0\ncountr = 1    // Error! Probably meant 'counter'\n```\n\n## Methods Are Just Slots\n\nIn Io, methods aren't special—they're just slots that hold executable blocks:\n\n```io\nCalculator := Object clone\n\n// Method is just a slot containing a method object\nCalculator add := method(a, b, a + b)\n\n// You can manipulate methods like any other value\naddMethod := Calculator getSlot(\"add\")\naddMethod type println           // Block\n\n// You can copy methods between objects\nScientificCalc := Object clone\nScientificCalc addition := Calculator getSlot(\"add\")\nScientificCalc addition(5, 3) println  // 8\n\n// You can even store methods in variables\noperation := method(x, x * 2)\nCalculator double := operation\nCalculator double(21) println    // 42\n```\n\n## The 'self' and 'sender' Context\n\nEvery method has access to special variables:\n\n```io\nPrinter := Object clone\nPrinter name := \"HP\"\nPrinter print := method(doc,\n    (\"Printer: \" .. self name) println    // self = receiver\n    (\"Sender: \" .. sender type) println   // sender = who sent the message\n    (\"Document: \" .. doc) println\n)\n\nComputer := Object clone\nComputer sendJob := method(\n    Printer print(\"report.pdf\")\n)\n\nComputer sendJob\n// Printer: HP\n// Sender: Computer\n// Document: report.pdf\n```\n\n## Message Forwarding\n\nWhen an object doesn't have a slot for a received message, it calls `forward`:\n\n```io\nProxy := Object clone\nProxy target := nil\nProxy forward := method(\n    (\"Forwarding \" .. call message name .. \" to target\") println\n    call evalArgAt(0) // This would forward to target\n)\n\np := Proxy clone\np doSomething(\"arg\")\n// Forwarding doSomething to target\n```\n\nThis enables powerful patterns like delegation and method missing:\n\n```io\n// Ruby-style method_missing\nDynamicObject := Object clone\nDynamicObject forward := method(\n    methodName := call message name\n    if(methodName beginsWithSeq(\"get\"),\n        # Handle getters\n        property := methodName afterSeq(\"get\") lowercase\n        self getSlot(property),\n        # Handle setters\n        if(methodName beginsWithSeq(\"set\"),\n            property := methodName afterSeq(\"set\") lowercase\n            value := call evalArgAt(0)\n            self setSlot(property, value)\n        )\n    )\n)\n\nobj := DynamicObject clone\nobj setName(\"Alice\")     // Creates 'name' slot\nobj getName println       // \"Alice\"\n```\n\n## Lazy Evaluation with Messages\n\nMessages don't evaluate immediately—they're data structures you can manipulate:\n\n```io\n// Messages as data\nexpr := message(2 + 3 * 4)\nexpr println             // 2 +(3 *(4))\n\n// Evaluate when ready\nresult := expr doInContext(Lobby)\nresult println           // 14\n\n// Modify messages before evaluation\nexpr := message(x + y)\ncontext := Object clone\ncontext x := 10\ncontext y := 20\nexpr doInContext(context) println  // 30\n```\n\nThis enables macro-like capabilities:\n\n```io\n// Create a timing macro\nObject time := method(\n    code := call argAt(0)  // Get the message, not its value\n    start := Date now\n    result := code doInContext(call sender)\n    elapsed := Date now - start\n    (\"Elapsed: \" .. elapsed) println\n    result\n)\n\n// Use it\ntime(\n    sum := 0\n    for(i, 1, 1000000, sum = sum + i)\n    sum\n)\n// Elapsed: 0.234\n// Returns: 500000500000\n```\n\n## Call Introspection\n\nThe `call` object provides detailed information about the current method invocation:\n\n```io\nObject debug := method(\n    \"=== Call Debug ===\" println\n    (\"Sender: \" .. call sender type) println\n    (\"Target: \" .. call target type) println\n    (\"Message: \" .. call message name) println\n    (\"Args: \" .. call message arguments) println\n    (\"Activated: \" .. call activated type) println\n    \"================\" println\n)\n\nTestObject := Object clone\nTestObject test := method(\n    debug\n)\n\nTestObject test\n// === Call Debug ===\n// Sender: Lobby\n// Target: TestObject\n// Message: debug\n// Args: list()\n// Activated: Block\n// ================\n```\n\n## Operator Messages\n\nOperators are messages with special precedence rules. Unlike many languages where operators are built-in syntax, in Io they're regular messages that follow configurable precedence levels. This means you can treat operators like any other method - you can override them, create new ones, or call them using regular message passing syntax.\n\nThe OperatorTable manages operator precedence, with levels from 0 (highest) to 13 (lowest). Standard arithmetic follows familiar rules: multiplication and division (level 3) bind tighter than addition and subtraction (level 4). Assignment operators like := and = have the lowest precedence (level 13), ensuring they capture everything to their right.\n\n```io\n// These are equivalent\n2 + 3 * 4\n2 +(3 *(4))\n\n// You can see the precedence\nOperatorTable println\n\n// You can add custom operators\nOperatorTable addOperator(\"@@\", 5)\nNumber @@ := method(n,\n    self pow(n) + n pow(self)\n)\n\n2 @@ 3 println  // 17 (2^3 + 3^2 = 8 + 9)\n\n// Operators are just messages\n5 send(\"+\", 3) println  // 8\n\"hello\" send(\"at\", 1) println  // e\n```\n\nThis unified treatment of operators as messages enables powerful metaprogramming techniques. You can intercept arithmetic operations for logging, create domain-specific operators for mathematical or business logic, or even implement operator overloading for custom types - all using the same message passing mechanism that underlies the entire language.\n\n## Assignment Messages\n\nEven assignment is message passing:\n\n```io\n// These are equivalent\nx := 10\nsetSlot(\"x\", 10)\n\n// And these\nx = 20\nupdateSlot(\"x\", 20)\n\n// You can override assignment behavior\nObject setSlot := method(name, value,\n    (\"Setting \" .. name .. \" to \" .. value) println\n    resend  // Call original setSlot\n)\n\ny := 42\n// Setting y to 42\n```\n\n## Method Activation vs. Value Access\n\nIo distinguishes between activatable and non-activatable values:\n\n```io\nobj := Object clone\n\n// Methods are activatable - they run when accessed\nobj greet := method(\"Hello!\" println)\nobj greet  // Prints \"Hello!\"\n\n// Other values are just returned\nobj name := \"Alice\"\nobj name  // Returns \"Alice\"\n\n// You can get a method without activating it\nm := obj getSlot(\"greet\")\nm println  // method(...)\n\n// And activate it later\nm call  // Prints \"Hello!\"\n\n// Check if something is activatable\nobj getSlot(\"greet\") isActivatable println  // true\nobj getSlot(\"name\") isActivatable println   // false\n```\n\n## Building a Message-Based DSL\n\nLet's build a simple HTML DSL using messages:\n\n```io\nHTML := Object clone\nHTML forward := method(\n    tagName := call message name\n    args := call message arguments\n    \n    // Build opening tag\n    result := \"\u003c\" .. tagName\n    \n    // Handle attributes (first arg if it's a Map)\n    if(args size > 0 and args at(0) name == \"curlyBrackets\",\n        attrs := call evalArgAt(0)\n        attrs foreach(key, value,\n            result = result .. \" \" .. key .. \"=\\\"\" .. value .. \"\\\"\"\n        )\n        args removeFirst\n    )\n    \n    result = result .. \">\"\n    \n    // Handle content\n    args foreach(arg,\n        content := call sender doMessage(arg)\n        if(content, result = result .. content)\n    )\n    \n    // Closing tag\n    result = result .. \"\u003c/\" .. tagName .. \">\"\n    result\n)\n\n// Usage\nhtml := HTML clone\n\npage := html div({ \"class\": \"container\" },\n    html h1(\"Welcome\"),\n    html p(\"This is a paragraph\"),\n    html ul(\n        html li(\"Item 1\"),\n        html li(\"Item 2\")\n    )\n)\n\npage println\n// \u003cdiv class=\"container\">\u003ch1>Welcome\u003c/h1>\u003cp>This is a paragraph\u003c/p>\u003cul>\u003cli>Item 1\u003c/li>\u003cli>Item 2\u003c/li>\u003c/ul>\u003c/div>\n```\n\n## Performance Considerations\n\nMessage passing has overhead compared to direct function calls:\n\n```io\n// Traditional method call\nobj := Object clone\nobj directMethod := method(x, x * 2)\n\n// Message construction and sending\nmsg := Message clone setName(\"directMethod\") setArguments(list(Message clone setName(\"5\")))\n\n// Benchmark\ntime(\n    100000 times(obj directMethod(5))\n)\n// 0.015000 seconds\n\ntime(\n    100000 times(obj doMessage(msg))\n)\n// 0.048000 seconds\n\n// Direct calls are ~3x faster, but message objects enable metaprogramming\n```\n\n## Common Patterns\n\nMessage passing and slot manipulation enable elegant implementations of common design patterns. These patterns leverage Io's dynamic nature to create flexible, maintainable code structures that would require significant boilerplate in more static languages.\n\n### Property Access Pattern\n\nThis pattern demonstrates how to dynamically generate getters and setters using message construction. Instead of manually writing accessor methods for each property, we use Io's metaprogramming capabilities to create them on demand. The generated methods follow a naming convention where properties are stored with an underscore prefix internally, while the public interface uses clean method names.\n\n```io\nPerson := Object clone\nPerson init := method(\n    self name := nil\n    self age := nil\n    self\n)\n\n// Generate getters/setters with messages\nPerson addAccessors := method(slotName,\n    // Getter\n    self setSlot(slotName,\n        method(self getSlot(\"_\" .. slotName))\n    )\n\n    // Setter\n    self setSlot(\"set\" .. slotName asCapitalized,\n        method(value, self setSlot(\"_\" .. slotName, value))\n    )\n)\n\nPerson addAccessors(\"name\")\nPerson addAccessors(\"age\")\n\np := Person clone\np setName(\"Alice\")\np name println  // \"Alice\"\n```\n\nThe beauty of this approach is that it scales effortlessly - adding new properties requires just one line of code per property, and the accessor methods are created with consistent behavior and naming. This pattern is particularly useful when building data models or domain objects where property access needs to be controlled or monitored.\n\n### Chain of Responsibility\n\nThe Chain of Responsibility pattern creates a pipeline of handlers where each handler decides whether to process a request or pass it to the next handler. In Io, this pattern is particularly clean because message passing naturally supports delegation. Each handler in the chain examines the request and either processes it or forwards it using simple message passing.\n\n```io\nHandler := Object clone\nHandler next := nil\nHandler handle := method(request,\n    if(self canHandle(request),\n        self process(request),\n        if(next, next handle(request))\n    )\n)\n\nAuthHandler := Handler clone\nAuthHandler canHandle := method(request,\n    request hasSlot(\"needsAuth\")\n)\nAuthHandler process := method(request,\n    \"Authenticating...\" println\n)\n\nLogHandler := Handler clone\nLogHandler canHandle := method(request, true)\nLogHandler process := method(request,\n    (\"Logging: \" .. request type) println\n)\n\n// Build chain\nauth := AuthHandler clone\nlog := LogHandler clone\nauth next := log\n\n// Process requests\nrequest := Object clone\nrequest type := \"GET\"\nrequest needsAuth := true\n\nauth handle(request)\n// Authenticating...\n// Logging: GET\n```\n\nThis pattern is invaluable for building middleware systems, request processors, or event handling pipelines. The chain can be dynamically reconfigured at runtime by simply changing the `next` references, and new handler types can be added without modifying existing code. The pattern also naturally supports optional processing - handlers can choose to stop the chain or allow it to continue based on the request's characteristics.\n\n## Debugging Messages\n\nUnderstanding message flow is crucial for debugging:\n\n```io\nObject trace := method(\n    self setSlot(\"forward\",\n        method(\n            (\"Missing: \" .. call message name) println\n            (\"Arguments: \" .. call message arguments) println\n            (\"Sender: \" .. sender type) println\n        )\n    )\n    self\n)\n\nbuggy := Object clone trace\nbuggy doSomethingWrong(1, 2, 3)\n// Missing: doSomethingWrong\n// Arguments: list(1, 2, 3)\n// Sender: Lobby\n```\n\n## Exercises\n\n1. **Message Logger**: Create a wrapper that logs all messages sent to an object, including arguments and return values.\n\n2. **Lazy Properties**: Implement properties that are only computed when first accessed, then cached.\n\n3. **Message Queue**: Build an object that queues messages and executes them later in order.\n\n4. **Method Decorators**: Create a system for wrapping methods with before/after behavior using messages.\n\n5. **Message Router**: Build a router that directs messages to different handlers based on patterns.\n\n## Advanced Message Techniques\n\n### Message Rewriting\n\n```io\nRewriter := Object clone\nRewriter forward := method(\n    msg := call message\n    \n    // Rewrite add to multiply\n    if(msg name == \"add\",\n        msg setName(\"multiply\")\n    )\n    \n    // Continue with modified message\n    resend\n)\n\ncalc := Rewriter clone\ncalc multiply := method(a, b, a * b)\ncalc add(3, 4) println  // 12 (rewritten to multiply!)\n```\n\n### Conditional Message Sending\n\n```io\nObject sendIf := method(condition, messageName,\n    if(condition,\n        self doMessage(Message clone setName(messageName))\n    )\n)\n\nObject sendUnless := method(condition, messageName,\n    if(condition not,\n        self doMessage(Message clone setName(messageName))\n    )\n)\n\nobj := Object clone\nobj greet := method(\"Hello!\" println)\n\nobj sendIf(true, \"greet\")      // Hello!\nobj sendUnless(false, \"greet\")  // Hello!\n```\n\n## Conclusion\n\nMessages and slots form the foundation of Io's object model. Every computation—from simple arithmetic to complex method calls—is accomplished through message passing. Objects store their state and behavior in slots, and respond to messages by looking up the corresponding slots.\n\nThis uniform model provides incredible flexibility. You can intercept messages, forward them, rewrite them, or queue them. You can introspect the entire message-passing process. You can build DSLs that feel native to the language. And you can debug by tracing the flow of messages through your system.\n\nUnderstanding messages and slots deeply is essential to mastering Io. They're not just an implementation detail—they're the conceptual core that makes Io's radical simplicity possible.\n"}}</script>
+</body>
+</html>

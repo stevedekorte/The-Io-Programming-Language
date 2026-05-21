@@ -1,0 +1,37 @@
+{
+  "title": "The Io Programming Language",
+  "topTitle": "Io",
+  "subtitle": "A comprehensive guide to prototype-based programming with Io.",
+  "content": [
+    {
+      "type": "ContentText",
+      "content": "This book provides an in-depth exploration of the Io programming language, designed for experienced programmers who want to understand prototype-based object-oriented programming. Through detailed comparisons with mainstream languages like JavaScript, Python, Ruby, and Java, readers will gain practical insights into Io's unique paradigm."
+    },
+    {
+      "type": "ContentCards",
+      "title": "Chapters",
+      "columns": 2,
+      "items": [
+        "Preface",
+        "Introduction",
+        "Getting-Started",
+        "Everything-is-an-Object",
+        "Prototypes-Not-Classes",
+        "Messages-and-Slots",
+        "Cloning-and-Inheritance",
+        "Control-Flow",
+        "Collections",
+        "Blocks-and-Closures",
+        "Exceptions",
+        "Metaprogramming",
+        "Concurrency",
+        "Domain-Specific-Languages",
+        "C-Integration",
+        "Real-World-Patterns",
+        "Case-Studies",
+        "Ecosystem-and-Libraries",
+        "Conclusion"
+      ]
+    }
+  ]
+}

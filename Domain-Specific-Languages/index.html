@@ -1,0 +1,712 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="stylesheet" href="../colvmn/style.css">
+<title>Domain-Specific Languages – Io</title>
+  <link rel="alternate" type="text/plain" title="llms.txt" href="/llms.txt">
+  <meta name="description" content="Using Io's minimal syntax and metaprogramming to design expressive DSLs.">
+</head>
+<body>
+<div class="page loaded"><div class="header"><div><h1>Domain-Specific Languages</h1><a class="back-link" href="../index.html">&larr; The Io Programming Language</a></div><a class="brand" href="../index.html">Io</a></div><p class="intro">Using Io's minimal syntax and metaprogramming to design expressive DSLs.</p><nav class="toc"><ul><li><a href="#why-io-excels-at-dsls">Why Io Excels at DSLs</a></li><li><a href="#building-your-first-dsl">Building Your First DSL</a></li><li><a href="#html-builder-dsl">HTML Builder DSL</a></li><li><a href="#sql-query-builder">SQL Query Builder</a></li><li><a href="#unit-testing-dsl">Unit Testing DSL</a></li><li><a href="#state-machine-dsl">State Machine DSL</a></li><li><a href="#routing-dsl-web-framework-style">Routing DSL (Web Framework Style)</a></li><li><a href="#data-validation-dsl">Data Validation DSL</a></li><li><a href="#dsl-best-practices">DSL Best Practices</a></li><li><a href="#exercises">Exercises</a></li><li><a href="#real-world-example-migration-dsl">Real-World Example: Migration DSL</a></li><li><a href="#conclusion">Conclusion</a></li></ul></nav><div class="section"><div class="section-body"><p>Io's minimal syntax, message-passing model, and metaprogramming capabilities make it ideal for creating Domain-Specific Languages (DSLs). This chapter explores how to build expressive DSLs that feel native to their problem domains.</p></div></div><h2 id="why-io-excels-at-dsls">Why Io Excels at DSLs</h2><div class="section"><div class="section-body"><p>Several features make Io particularly suitable for DSLs:</p><ol><li><strong>Minimal syntax</strong> - Less language machinery to work around</li><li><strong>Optional parentheses</strong> - Clean, readable DSL code</li><li><strong>Message chains</strong> - Natural expression of domain concepts</li><li><strong>Runtime flexibility</strong> - Modify behavior on the fly</li><li><strong>Homoiconicity</strong> - Code as manipulable data</li></ol><p>Compare a hypothetical DSL in Io vs Ruby:</p><pre><code>// Io DSL - clean, minimal
+recipe "Chocolate Cake" makes(8) servings {
+    ingredient "flour" amount(2) cups
+    ingredient "sugar" amount(1.5) cups
+    
+    step "Mix dry ingredients"
+    step "Add wet ingredients"
+    bake at(350) degrees for(30) minutes
+}</code></pre><pre><code># Ruby DSL - more syntax artifacts
+recipe "Chocolate Cake" do
+    makes 8.servings
+    
+    ingredient "flour", amount: 2.cups
+    ingredient "sugar", amount: 1.5.cups
+    
+    step "Mix dry ingredients"
+    step "Add wet ingredients"
+    bake at: 350.degrees, for: 30.minutes
+end</code></pre></div></div><h2 id="building-your-first-dsl">Building Your First DSL</h2><div class="section"><div class="section-body"><p>Let's create a simple configuration DSL:</p><pre><code>// Define the DSL
+Config := Object clone
+Config settings := Map clone
+
+Config set := method(key, value,
+    settings atPut(key asString, value)
+    self  // For chaining
+)
+
+Config get := method(key,
+    settings at(key asString)
+)
+
+Config section := method(name,
+    sec := Config clone
+    settings atPut(name asString, sec)
+    sec
+)
+
+// Use the DSL
+config := Config clone
+config set("host", "localhost") \
+      set("port", 8080) \
+      section("database") \
+          set("driver", "postgresql") \
+          set("name", "myapp")
+
+config get("host") println           // localhost
+config get("database") get("driver") println  // postgresql</code></pre></div></div><h2 id="html-builder-dsl">HTML Builder DSL</h2><div class="section"><div class="section-body"><p>A more complex example - generating HTML:</p><pre><code>HTML := Object clone
+
+// Handle any tag name via forward
+HTML forward := method(
+    tagName := call message name
+    attributes := Map clone
+    children := list()
+    
+    // Process arguments
+    call message arguments foreach(arg,
+        argValue := call sender doMessage(arg)
+        
+        if(argValue type == "Map",
+            // It's attributes
+            attributes = argValue
+        ,
+            // It's content or children
+            if(argValue type == "Sequence",
+                children append(argValue),
+                if(argValue type == "List",
+                    children appendSeq(argValue),
+                    children append(argValue asString)
+                )
+            )
+        )
+    )
+    
+    // Build HTML
+    result := "&lt;" .. tagName
+    attributes foreach(key, value,
+        result = result .. " " .. key .. "=\"" .. value .. "\""
+    )
+    
+    if(children size == 0,
+        result = result .. " /&gt;",
+        result = result .. "&gt;"
+        children foreach(child, result = result .. child)
+        result = result .. "&lt;/" .. tagName .. "&gt;"
+    )
+    
+    result
+)
+
+// Helper for attributes
+Object attrs := method(
+    args := call message arguments
+    map := Map clone
+    
+    args foreach(arg,
+        pair := arg name split(":")
+        if(pair size == 2,
+            map atPut(pair at(0), call sender doMessage(arg arguments at(0)))
+        )
+    )
+    map
+)
+
+// Usage
+html := HTML clone
+
+page := html div(attrs(class: "container", id: "main"),
+    html h1("Welcome to My Site"),
+    html p(attrs(class: "intro"), 
+        "This is a paragraph with ",
+        html strong("bold text"),
+        " in it."
+    ),
+    html ul(
+        html li("First item"),
+        html li("Second item"),
+        html li("Third item")
+    )
+)
+
+page println
+// &lt;div class="container" id="main"&gt;&lt;h1&gt;Welcome to My Site&lt;/h1&gt;...</code></pre></div></div><h2 id="sql-query-builder">SQL Query Builder</h2><div class="section"><div class="section-body"><pre><code>Query := Object clone
+Query init := method(
+    self selections := list("*")
+    self tables := list()
+    self conditions := list()
+    self joins := list()
+    self
+)
+
+Query select := method(
+    self selections = call message arguments map(arg,
+        call sender doMessage(arg) asString
+    )
+    self
+)
+
+Query from := method(table,
+    tables append(table)
+    self
+)
+
+Query where := method(
+    condition := call argAt(0)
+    conditions append(condition code asString)
+    self
+)
+
+Query join := method(table, on,
+    joins append("JOIN " .. table .. " ON " .. on code asString)
+    self
+)
+
+Query toSQL := method(
+    sql := "SELECT " .. selections join(", ")
+    sql = sql .. " FROM " .. tables join(", ")
+    
+    if(joins size &gt; 0,
+        sql = sql .. " " .. joins join(" ")
+    )
+    
+    if(conditions size &gt; 0,
+        sql = sql .. " WHERE " .. conditions join(" AND ")
+    )
+    
+    sql
+)
+
+// Usage
+query := Query clone init
+
+sql := query select("name", "age", "email") \
+            from("users") \
+            join("profiles", users.id == profiles.user_id) \
+            where(age &gt; 18) \
+            where(status == "active") \
+            toSQL
+
+sql println
+// SELECT name, age, email FROM users JOIN profiles ON users.id == profiles.user_id WHERE age &gt; 18 AND status == "active"</code></pre></div></div><h2 id="unit-testing-dsl">Unit Testing DSL</h2><div class="section"><div class="section-body"><pre><code>TestSuite := Object clone
+TestSuite tests := list()
+TestSuite currentTest := nil
+
+TestSuite describe := method(description,
+    suite := TestSuite clone
+    suite description := description
+    suite tests = list()
+    
+    # Execute the test definition block
+    call evalArgAt(1)
+    
+    suite
+)
+
+TestSuite it := method(testName,
+    test := Object clone
+    test name := testName
+    test block := call argAt(1)
+    tests append(test)
+)
+
+TestSuite before := method(
+    self beforeBlock := call argAt(0)
+)
+
+TestSuite after := method(
+    self afterBlock := call argAt(0)
+)
+
+TestSuite run := method(
+    ("\n" .. description) println
+    ("=" repeated(description size)) println
+    
+    passed := 0
+    failed := 0
+    
+    tests foreach(test,
+        if(hasSlot("beforeBlock"), beforeBlock doInContext(self))
+        
+        e := try(
+            test block doInContext(self)
+            ("✓ " .. test name) println
+            passed = passed + 1
+        ) catch(Exception, e,
+            ("✗ " .. test name) println
+            ("  " .. e message) println
+            failed = failed + 1
+        )
+        
+        if(hasSlot("afterBlock"), afterBlock doInContext(self))
+    )
+    
+    ("\nPassed: " .. passed .. ", Failed: " .. failed) println
+)
+
+// Assertion helpers
+Object expect := method(actual,
+    Expectation clone setActual(actual)
+)
+
+Expectation := Object clone
+Expectation setActual := method(value,
+    self actual := value
+    self
+)
+
+Expectation toBe := method(expected,
+    if(actual != expected,
+        Exception raise("Expected " .. expected .. " but got " .. actual)
+    )
+)
+
+Expectation toEqual := method(expected,
+    if(actual != expected,
+        Exception raise("Expected " .. expected .. " but got " .. actual)
+    )
+)
+
+Expectation toContain := method(item,
+    if(actual contains(item) not,
+        Exception raise("Expected " .. actual .. " to contain " .. item)
+    )
+)
+
+// Usage
+MathTests := describe("Math operations",
+    before(
+        self calculator := Object clone
+        calculator add := method(a, b, a + b)
+        calculator multiply := method(a, b, a * b)
+    )
+    
+    it("should add numbers correctly",
+        expect(calculator add(2, 3)) toBe(5)
+        expect(calculator add(-1, 1)) toBe(0)
+    )
+    
+    it("should multiply numbers correctly",
+        expect(calculator multiply(3, 4)) toBe(12)
+        expect(calculator multiply(0, 5)) toBe(0)
+    )
+    
+    it("should handle edge cases",
+        expect(calculator add(0, 0)) toBe(0)
+    )
+)
+
+MathTests run</code></pre></div></div><h2 id="state-machine-dsl">State Machine DSL</h2><div class="section"><div class="section-body"><pre><code>StateMachine := Object clone
+StateMachine states := Map clone
+StateMachine currentState := nil
+StateMachine initialState := nil
+
+StateMachine state := method(name,
+    s := State clone
+    s name := name
+    s machine := self
+    states atPut(name, s)
+    
+    if(initialState isNil, initialState = s)
+    
+    s
+)
+
+State := Object clone
+State transitions := Map clone
+
+State on := method(event, targetState,
+    transitions atPut(event, targetState)
+    self
+)
+
+State enter := method(
+    self enterBlock := call argAt(0)
+    self
+)
+
+State exit := method(
+    self exitBlock := call argAt(0)
+    self
+)
+
+StateMachine start := method(
+    currentState = initialState
+    if(currentState hasSlot("enterBlock"),
+        currentState enterBlock call
+    )
+)
+
+StateMachine trigger := method(event,
+    if(currentState transitions hasKey(event),
+        nextStateName := currentState transitions at(event)
+        nextState := states at(nextStateName)
+        
+        if(currentState hasSlot("exitBlock"),
+            currentState exitBlock call
+        )
+        
+        ("Transitioning from " .. currentState name .. " to " .. nextStateName) println
+        currentState = nextState
+        
+        if(currentState hasSlot("enterBlock"),
+            currentState enterBlock call
+        )
+    ,
+        ("No transition for event '" .. event .. "' from state '" .. currentState name .. "'") println
+    )
+)
+
+// Usage
+door := StateMachine clone
+
+door state("closed") \
+    on("open", "opened") \
+    on("lock", "locked") \
+    enter(block("Door is now closed" println))
+
+door state("opened") \
+    on("close", "closed") \
+    enter(block("Door is now open" println))
+
+door state("locked") \
+    on("unlock", "closed") \
+    enter(block("Door is now locked" println))
+
+door start
+door trigger("open")   // Transitioning from closed to opened
+door trigger("close")  // Transitioning from opened to closed
+door trigger("lock")   // Transitioning from closed to locked
+door trigger("open")   // No transition for event 'open' from state 'locked'</code></pre></div></div><h2 id="routing-dsl-web-framework-style">Routing DSL (Web Framework Style)</h2><div class="section"><div class="section-body"><pre><code>Router := Object clone
+Router routes := list()
+
+Router get := method(path,
+    addRoute("GET", path, call argAt(1))
+)
+
+Router post := method(path,
+    addRoute("POST", path, call argAt(1))
+)
+
+Router put := method(path,
+    addRoute("PUT", path, call argAt(1))
+)
+
+Router delete := method(path,
+    addRoute("DELETE", path, call argAt(1))
+)
+
+Router addRoute := method(method, path, handler,
+    routes append(Map with(
+        "method", method,
+        "path", path,
+        "pattern", pathToRegex(path),
+        "handler", handler
+    ))
+    self
+)
+
+Router pathToRegex := method(path,
+    // Convert :param to regex groups
+    pattern := path
+    pattern = pattern replaceAllRegex(":([^/]+)", "([^/]+)")
+    "^" .. pattern .. "$"
+)
+
+Router handle := method(method, path,
+    routes foreach(route,
+        if(route at("method") == method,
+            match := path matchesRegex(route at("pattern"))
+            if(match,
+                params := extractParams(route at("path"), path, match)
+                return route at("handler") call(params)
+            )
+        )
+    )
+    
+    Map with("status", 404, "body", "Not Found")
+)
+
+Router extractParams := method(pattern, path, match,
+    params := Map clone
+    
+    // Extract named parameters
+    names := pattern allMatchesOfRegex(":([^/]+)") map(m, m at(1))
+    names foreach(i, name,
+        params atPut(name, match at(i + 1))
+    )
+    
+    params
+)
+
+// Usage
+app := Router clone
+
+app get("/", block(params,
+    Map with("status", 200, "body", "Welcome to the home page")
+))
+
+app get("/users/:id", block(params,
+    Map with("status", 200, "body", "User " .. params at("id"))
+))
+
+app post("/users", block(params,
+    Map with("status", 201, "body", "User created")
+))
+
+// Simulate requests
+app handle("GET", "/") at("body") println        // Welcome to the home page
+app handle("GET", "/users/123") at("body") println  // User 123
+app handle("POST", "/users") at("body") println  // User created
+app handle("GET", "/unknown") at("body") println // Not Found</code></pre></div></div><h2 id="data-validation-dsl">Data Validation DSL</h2><div class="section"><div class="section-body"><pre><code>Validator := Object clone
+
+Validator field := method(name,
+    f := Field clone
+    f name := name
+    f rules := list()
+    self currentField := f
+    f
+)
+
+Field := Object clone
+
+Field required := method(
+    rules append(block(value,
+        if(value isNil or value == "",
+            Exception raise(name .. " is required"),
+            true
+        )
+    ))
+    self
+)
+
+Field minLength := method(min,
+    rules append(block(value,
+        if(value size &lt; min,
+            Exception raise(name .. " must be at least " .. min .. " characters"),
+            true
+        )
+    ))
+    self
+)
+
+Field maxLength := method(max,
+    rules append(block(value,
+        if(value size &gt; max,
+            Exception raise(name .. " must be at most " .. max .. " characters"),
+            true
+        )
+    ))
+    self
+)
+
+Field matches := method(regex,
+    rules append(block(value,
+        if(value matchesRegex(regex) not,
+            Exception raise(name .. " has invalid format"),
+            true
+        )
+    ))
+    self
+)
+
+Field validate := method(value,
+    rules foreach(rule,
+        rule call(value)
+    )
+    true
+)
+
+// Usage
+userValidator := Validator clone
+
+username := userValidator field("username") \
+    required \
+    minLength(3) \
+    maxLength(20) \
+    matches("^[a-zA-Z0-9_]+$")
+
+email := userValidator field("email") \
+    required \
+    matches("^[^@]+@[^@]+\\.[^@]+$")
+
+// Test validation
+try(
+    username validate("ab")
+) catch(Exception, e,
+    e message println  // username must be at least 3 characters
+)
+
+try(
+    email validate("not-an-email")
+) catch(Exception, e,
+    e message println  // email has invalid format
+)
+
+username validate("valid_user123") println  // true
+email validate("user@example.com") println  // true</code></pre></div></div><h2 id="dsl-best-practices">DSL Best Practices</h2><div class="section"><div class="section-body"><h3 id="1-natural-language-flow">1. Natural Language Flow</h3><pre><code>// Good - reads naturally
+recipe needs(2) cups of("flour")
+order shipping priority within(3) days
+
+// Bad - programmer-centric
+recipe setAmount(2) setUnit("cups") setIngredient("flour")
+order setShipping("priority") setDeliveryDays(3)</code></pre><h3 id="2-method-chaining">2. Method Chaining</h3><pre><code>// Enable fluent interfaces
+Object withChaining := method(
+    call message arguments foreach(arg,
+        slotName := arg name
+        self setSlot(slotName, call evalArgAt(0))
+    )
+    self  // Always return self
+)
+
+Person := Object clone
+Person configure := method(
+    withChaining(
+        name(n, self name := n),
+        age(a, self age := a),
+        email(e, self email := e)
+    )
+)
+
+person := Person clone configure \
+    name("Alice") \
+    age(30) \
+    email("alice@example.com")</code></pre><h3 id="3-context-management">3. Context Management</h3><pre><code>DSLContext := Object clone
+DSLContext stack := list()
+
+DSLContext push := method(obj,
+    stack append(obj)
+)
+
+DSLContext pop := method(
+    stack pop
+)
+
+DSLContext current := method(
+    stack last
+)
+
+DSLContext with := method(obj, block,
+    push(obj)
+    e := try(result := block call)
+    pop
+    if(e, e raise, result)
+)
+
+// Usage in DSL
+Form := Object clone
+Form fields := list()
+
+Form field := method(name,
+    f := Field clone
+    f name := name
+    DSLContext with(f,
+        call evalArgAt(1)
+    )
+    fields append(f)
+)
+
+Field label := method(text,
+    DSLContext current label := text
+)</code></pre></div></div><h2 id="exercises">Exercises</h2><div class="section"><div class="section-body"><ol><li><strong>CSS DSL</strong>: Create a DSL for generating CSS with nested rules and variables.</li><li><strong>Graph Description Language</strong>: Build a DSL for describing graphs and their relationships.</li><li><strong>Build System DSL</strong>: Implement a make/rake-like build system DSL.</li><li><strong>BDD Testing DSL</strong>: Create a Behavior-Driven Development testing framework.</li><li><strong>Configuration Management</strong>: Build a DSL for system configuration management.</li></ol></div></div><h2 id="real-world-example-migration-dsl">Real-World Example: Migration DSL</h2><div class="section"><div class="section-body"><pre><code>Migration := Object clone
+Migration changes := list()
+
+Migration createTable := method(name,
+    table := TableDefinition clone
+    table name := name
+    table columns := list()
+    
+    call evalArgAt(1)
+    
+    changes append(Map with(
+        "type", "createTable",
+        "table", table
+    ))
+    self
+)
+
+Migration dropTable := method(name,
+    changes append(Map with(
+        "type", "dropTable",
+        "name", name
+    ))
+    self
+)
+
+TableDefinition := Object clone
+
+TableDefinition column := method(name, type,
+    columns append(Map with(
+        "name", name,
+        "type", type,
+        "constraints", list()
+    ))
+    self
+)
+
+TableDefinition primaryKey := method(col,
+    columns last at("constraints") append("PRIMARY KEY")
+    self
+)
+
+TableDefinition notNull := method(
+    columns last at("constraints") append("NOT NULL")
+    self
+)
+
+TableDefinition unique := method(
+    columns last at("constraints") append("UNIQUE")
+    self
+)
+
+Migration toSQL := method(
+    sql := list()
+    
+    changes foreach(change,
+        if(change at("type") == "createTable",
+            table := change at("table")
+            stmt := "CREATE TABLE " .. table name .. " (\n"
+            
+            cols := table columns map(col,
+                "  " .. col at("name") .. " " .. col at("type") .. 
+                if(col at("constraints") size &gt; 0,
+                    " " .. col at("constraints") join(" "),
+                    ""
+                )
+            )
+            
+            stmt = stmt .. cols join(",\n") .. "\n);"
+            sql append(stmt)
+        )
+        
+        if(change at("type") == "dropTable",
+            sql append("DROP TABLE " .. change at("name") .. ";")
+        )
+    )
+    
+    sql join("\n\n")
+)
+
+// Usage
+migration := Migration clone
+
+migration createTable("users",
+    column("id", "INTEGER") primaryKey,
+    column("username", "VARCHAR(50)") notNull unique,
+    column("email", "VARCHAR(100)") notNull unique,
+    column("created_at", "TIMESTAMP") notNull
+)
+
+migration createTable("posts",
+    column("id", "INTEGER") primaryKey,
+    column("user_id", "INTEGER") notNull,
+    column("title", "VARCHAR(200)") notNull,
+    column("content", "TEXT"),
+    column("published_at", "TIMESTAMP")
+)
+
+migration toSQL println</code></pre></div></div><h2 id="conclusion">Conclusion</h2><div class="section"><div class="section-body"><p>Domain-Specific Languages in Io demonstrate the language's expressive power. By leveraging message passing, optional parentheses, method chaining, and metaprogramming, you can create DSLs that feel natural to domain experts while remaining fully integrated with the host language.</p><p>The key to successful DSLs in Io is understanding that you're not fighting against language syntax&mdash;you're working with it. Messages become domain commands, objects become domain concepts, and the minimal syntax stays out of your way. This makes Io ideal for creating internal DSLs that are both powerful and readable.</p></div></div><div class="page-footer"><a class="next-link" href="../C-Integration/index.html">C Integration &rarr;</a></div></div>
+<script src="../colvmn/layout/bundle.js" defer></script>
+  <script type="application/json" id="colvmn-prefetch">{"./_index.json":{"ok":false,"status":404},"./_index.md":{"ok":true,"status":200,"content":"---\ntitle: Domain-Specific Languages\ntopTitle: Io\nsubtitle: \"Using Io's minimal syntax and metaprogramming to design expressive DSLs.\"\nnextSectionLink: true\n---\n\nIo's minimal syntax, message-passing model, and metaprogramming capabilities make it ideal for creating Domain-Specific Languages (DSLs). This chapter explores how to build expressive DSLs that feel native to their problem domains.\n\n## Why Io Excels at DSLs\n\nSeveral features make Io particularly suitable for DSLs:\n\n1. **Minimal syntax** - Less language machinery to work around\n2. **Optional parentheses** - Clean, readable DSL code\n3. **Message chains** - Natural expression of domain concepts\n4. **Runtime flexibility** - Modify behavior on the fly\n5. **Homoiconicity** - Code as manipulable data\n\nCompare a hypothetical DSL in Io vs Ruby:\n\n```io\n// Io DSL - clean, minimal\nrecipe \"Chocolate Cake\" makes(8) servings {\n    ingredient \"flour\" amount(2) cups\n    ingredient \"sugar\" amount(1.5) cups\n    \n    step \"Mix dry ingredients\"\n    step \"Add wet ingredients\"\n    bake at(350) degrees for(30) minutes\n}\n```\n\n```ruby\n# Ruby DSL - more syntax artifacts\nrecipe \"Chocolate Cake\" do\n    makes 8.servings\n    \n    ingredient \"flour\", amount: 2.cups\n    ingredient \"sugar\", amount: 1.5.cups\n    \n    step \"Mix dry ingredients\"\n    step \"Add wet ingredients\"\n    bake at: 350.degrees, for: 30.minutes\nend\n```\n\n## Building Your First DSL\n\nLet's create a simple configuration DSL:\n\n```io\n// Define the DSL\nConfig := Object clone\nConfig settings := Map clone\n\nConfig set := method(key, value,\n    settings atPut(key asString, value)\n    self  // For chaining\n)\n\nConfig get := method(key,\n    settings at(key asString)\n)\n\nConfig section := method(name,\n    sec := Config clone\n    settings atPut(name asString, sec)\n    sec\n)\n\n// Use the DSL\nconfig := Config clone\nconfig set(\"host\", \"localhost\") \\\n      set(\"port\", 8080) \\\n      section(\"database\") \\\n          set(\"driver\", \"postgresql\") \\\n          set(\"name\", \"myapp\")\n\nconfig get(\"host\") println           // localhost\nconfig get(\"database\") get(\"driver\") println  // postgresql\n```\n\n## HTML Builder DSL\n\nA more complex example - generating HTML:\n\n```io\nHTML := Object clone\n\n// Handle any tag name via forward\nHTML forward := method(\n    tagName := call message name\n    attributes := Map clone\n    children := list()\n    \n    // Process arguments\n    call message arguments foreach(arg,\n        argValue := call sender doMessage(arg)\n        \n        if(argValue type == \"Map\",\n            // It's attributes\n            attributes = argValue\n        ,\n            // It's content or children\n            if(argValue type == \"Sequence\",\n                children append(argValue),\n                if(argValue type == \"List\",\n                    children appendSeq(argValue),\n                    children append(argValue asString)\n                )\n            )\n        )\n    )\n    \n    // Build HTML\n    result := \"\u003c\" .. tagName\n    attributes foreach(key, value,\n        result = result .. \" \" .. key .. \"=\\\"\" .. value .. \"\\\"\"\n    )\n    \n    if(children size == 0,\n        result = result .. \" />\",\n        result = result .. \">\"\n        children foreach(child, result = result .. child)\n        result = result .. \"\u003c/\" .. tagName .. \">\"\n    )\n    \n    result\n)\n\n// Helper for attributes\nObject attrs := method(\n    args := call message arguments\n    map := Map clone\n    \n    args foreach(arg,\n        pair := arg name split(\":\")\n        if(pair size == 2,\n            map atPut(pair at(0), call sender doMessage(arg arguments at(0)))\n        )\n    )\n    map\n)\n\n// Usage\nhtml := HTML clone\n\npage := html div(attrs(class: \"container\", id: \"main\"),\n    html h1(\"Welcome to My Site\"),\n    html p(attrs(class: \"intro\"), \n        \"This is a paragraph with \",\n        html strong(\"bold text\"),\n        \" in it.\"\n    ),\n    html ul(\n        html li(\"First item\"),\n        html li(\"Second item\"),\n        html li(\"Third item\")\n    )\n)\n\npage println\n// \u003cdiv class=\"container\" id=\"main\">\u003ch1>Welcome to My Site\u003c/h1>...\n```\n\n## SQL Query Builder\n\n```io\nQuery := Object clone\nQuery init := method(\n    self selections := list(\"*\")\n    self tables := list()\n    self conditions := list()\n    self joins := list()\n    self\n)\n\nQuery select := method(\n    self selections = call message arguments map(arg,\n        call sender doMessage(arg) asString\n    )\n    self\n)\n\nQuery from := method(table,\n    tables append(table)\n    self\n)\n\nQuery where := method(\n    condition := call argAt(0)\n    conditions append(condition code asString)\n    self\n)\n\nQuery join := method(table, on,\n    joins append(\"JOIN \" .. table .. \" ON \" .. on code asString)\n    self\n)\n\nQuery toSQL := method(\n    sql := \"SELECT \" .. selections join(\", \")\n    sql = sql .. \" FROM \" .. tables join(\", \")\n    \n    if(joins size > 0,\n        sql = sql .. \" \" .. joins join(\" \")\n    )\n    \n    if(conditions size > 0,\n        sql = sql .. \" WHERE \" .. conditions join(\" AND \")\n    )\n    \n    sql\n)\n\n// Usage\nquery := Query clone init\n\nsql := query select(\"name\", \"age\", \"email\") \\\n            from(\"users\") \\\n            join(\"profiles\", users.id == profiles.user_id) \\\n            where(age > 18) \\\n            where(status == \"active\") \\\n            toSQL\n\nsql println\n// SELECT name, age, email FROM users JOIN profiles ON users.id == profiles.user_id WHERE age > 18 AND status == \"active\"\n```\n\n## Unit Testing DSL\n\n```io\nTestSuite := Object clone\nTestSuite tests := list()\nTestSuite currentTest := nil\n\nTestSuite describe := method(description,\n    suite := TestSuite clone\n    suite description := description\n    suite tests = list()\n    \n    # Execute the test definition block\n    call evalArgAt(1)\n    \n    suite\n)\n\nTestSuite it := method(testName,\n    test := Object clone\n    test name := testName\n    test block := call argAt(1)\n    tests append(test)\n)\n\nTestSuite before := method(\n    self beforeBlock := call argAt(0)\n)\n\nTestSuite after := method(\n    self afterBlock := call argAt(0)\n)\n\nTestSuite run := method(\n    (\"\\n\" .. description) println\n    (\"=\" repeated(description size)) println\n    \n    passed := 0\n    failed := 0\n    \n    tests foreach(test,\n        if(hasSlot(\"beforeBlock\"), beforeBlock doInContext(self))\n        \n        e := try(\n            test block doInContext(self)\n            (\"✓ \" .. test name) println\n            passed = passed + 1\n        ) catch(Exception, e,\n            (\"✗ \" .. test name) println\n            (\"  \" .. e message) println\n            failed = failed + 1\n        )\n        \n        if(hasSlot(\"afterBlock\"), afterBlock doInContext(self))\n    )\n    \n    (\"\\nPassed: \" .. passed .. \", Failed: \" .. failed) println\n)\n\n// Assertion helpers\nObject expect := method(actual,\n    Expectation clone setActual(actual)\n)\n\nExpectation := Object clone\nExpectation setActual := method(value,\n    self actual := value\n    self\n)\n\nExpectation toBe := method(expected,\n    if(actual != expected,\n        Exception raise(\"Expected \" .. expected .. \" but got \" .. actual)\n    )\n)\n\nExpectation toEqual := method(expected,\n    if(actual != expected,\n        Exception raise(\"Expected \" .. expected .. \" but got \" .. actual)\n    )\n)\n\nExpectation toContain := method(item,\n    if(actual contains(item) not,\n        Exception raise(\"Expected \" .. actual .. \" to contain \" .. item)\n    )\n)\n\n// Usage\nMathTests := describe(\"Math operations\",\n    before(\n        self calculator := Object clone\n        calculator add := method(a, b, a + b)\n        calculator multiply := method(a, b, a * b)\n    )\n    \n    it(\"should add numbers correctly\",\n        expect(calculator add(2, 3)) toBe(5)\n        expect(calculator add(-1, 1)) toBe(0)\n    )\n    \n    it(\"should multiply numbers correctly\",\n        expect(calculator multiply(3, 4)) toBe(12)\n        expect(calculator multiply(0, 5)) toBe(0)\n    )\n    \n    it(\"should handle edge cases\",\n        expect(calculator add(0, 0)) toBe(0)\n    )\n)\n\nMathTests run\n```\n\n## State Machine DSL\n\n```io\nStateMachine := Object clone\nStateMachine states := Map clone\nStateMachine currentState := nil\nStateMachine initialState := nil\n\nStateMachine state := method(name,\n    s := State clone\n    s name := name\n    s machine := self\n    states atPut(name, s)\n    \n    if(initialState isNil, initialState = s)\n    \n    s\n)\n\nState := Object clone\nState transitions := Map clone\n\nState on := method(event, targetState,\n    transitions atPut(event, targetState)\n    self\n)\n\nState enter := method(\n    self enterBlock := call argAt(0)\n    self\n)\n\nState exit := method(\n    self exitBlock := call argAt(0)\n    self\n)\n\nStateMachine start := method(\n    currentState = initialState\n    if(currentState hasSlot(\"enterBlock\"),\n        currentState enterBlock call\n    )\n)\n\nStateMachine trigger := method(event,\n    if(currentState transitions hasKey(event),\n        nextStateName := currentState transitions at(event)\n        nextState := states at(nextStateName)\n        \n        if(currentState hasSlot(\"exitBlock\"),\n            currentState exitBlock call\n        )\n        \n        (\"Transitioning from \" .. currentState name .. \" to \" .. nextStateName) println\n        currentState = nextState\n        \n        if(currentState hasSlot(\"enterBlock\"),\n            currentState enterBlock call\n        )\n    ,\n        (\"No transition for event '\" .. event .. \"' from state '\" .. currentState name .. \"'\") println\n    )\n)\n\n// Usage\ndoor := StateMachine clone\n\ndoor state(\"closed\") \\\n    on(\"open\", \"opened\") \\\n    on(\"lock\", \"locked\") \\\n    enter(block(\"Door is now closed\" println))\n\ndoor state(\"opened\") \\\n    on(\"close\", \"closed\") \\\n    enter(block(\"Door is now open\" println))\n\ndoor state(\"locked\") \\\n    on(\"unlock\", \"closed\") \\\n    enter(block(\"Door is now locked\" println))\n\ndoor start\ndoor trigger(\"open\")   // Transitioning from closed to opened\ndoor trigger(\"close\")  // Transitioning from opened to closed\ndoor trigger(\"lock\")   // Transitioning from closed to locked\ndoor trigger(\"open\")   // No transition for event 'open' from state 'locked'\n```\n\n## Routing DSL (Web Framework Style)\n\n```io\nRouter := Object clone\nRouter routes := list()\n\nRouter get := method(path,\n    addRoute(\"GET\", path, call argAt(1))\n)\n\nRouter post := method(path,\n    addRoute(\"POST\", path, call argAt(1))\n)\n\nRouter put := method(path,\n    addRoute(\"PUT\", path, call argAt(1))\n)\n\nRouter delete := method(path,\n    addRoute(\"DELETE\", path, call argAt(1))\n)\n\nRouter addRoute := method(method, path, handler,\n    routes append(Map with(\n        \"method\", method,\n        \"path\", path,\n        \"pattern\", pathToRegex(path),\n        \"handler\", handler\n    ))\n    self\n)\n\nRouter pathToRegex := method(path,\n    // Convert :param to regex groups\n    pattern := path\n    pattern = pattern replaceAllRegex(\":([^/]+)\", \"([^/]+)\")\n    \"^\" .. pattern .. \"$\"\n)\n\nRouter handle := method(method, path,\n    routes foreach(route,\n        if(route at(\"method\") == method,\n            match := path matchesRegex(route at(\"pattern\"))\n            if(match,\n                params := extractParams(route at(\"path\"), path, match)\n                return route at(\"handler\") call(params)\n            )\n        )\n    )\n    \n    Map with(\"status\", 404, \"body\", \"Not Found\")\n)\n\nRouter extractParams := method(pattern, path, match,\n    params := Map clone\n    \n    // Extract named parameters\n    names := pattern allMatchesOfRegex(\":([^/]+)\") map(m, m at(1))\n    names foreach(i, name,\n        params atPut(name, match at(i + 1))\n    )\n    \n    params\n)\n\n// Usage\napp := Router clone\n\napp get(\"/\", block(params,\n    Map with(\"status\", 200, \"body\", \"Welcome to the home page\")\n))\n\napp get(\"/users/:id\", block(params,\n    Map with(\"status\", 200, \"body\", \"User \" .. params at(\"id\"))\n))\n\napp post(\"/users\", block(params,\n    Map with(\"status\", 201, \"body\", \"User created\")\n))\n\n// Simulate requests\napp handle(\"GET\", \"/\") at(\"body\") println        // Welcome to the home page\napp handle(\"GET\", \"/users/123\") at(\"body\") println  // User 123\napp handle(\"POST\", \"/users\") at(\"body\") println  // User created\napp handle(\"GET\", \"/unknown\") at(\"body\") println // Not Found\n```\n\n## Data Validation DSL\n\n```io\nValidator := Object clone\n\nValidator field := method(name,\n    f := Field clone\n    f name := name\n    f rules := list()\n    self currentField := f\n    f\n)\n\nField := Object clone\n\nField required := method(\n    rules append(block(value,\n        if(value isNil or value == \"\",\n            Exception raise(name .. \" is required\"),\n            true\n        )\n    ))\n    self\n)\n\nField minLength := method(min,\n    rules append(block(value,\n        if(value size \u003c min,\n            Exception raise(name .. \" must be at least \" .. min .. \" characters\"),\n            true\n        )\n    ))\n    self\n)\n\nField maxLength := method(max,\n    rules append(block(value,\n        if(value size > max,\n            Exception raise(name .. \" must be at most \" .. max .. \" characters\"),\n            true\n        )\n    ))\n    self\n)\n\nField matches := method(regex,\n    rules append(block(value,\n        if(value matchesRegex(regex) not,\n            Exception raise(name .. \" has invalid format\"),\n            true\n        )\n    ))\n    self\n)\n\nField validate := method(value,\n    rules foreach(rule,\n        rule call(value)\n    )\n    true\n)\n\n// Usage\nuserValidator := Validator clone\n\nusername := userValidator field(\"username\") \\\n    required \\\n    minLength(3) \\\n    maxLength(20) \\\n    matches(\"^[a-zA-Z0-9_]+$\")\n\nemail := userValidator field(\"email\") \\\n    required \\\n    matches(\"^[^@]+@[^@]+\\\\.[^@]+$\")\n\n// Test validation\ntry(\n    username validate(\"ab\")\n) catch(Exception, e,\n    e message println  // username must be at least 3 characters\n)\n\ntry(\n    email validate(\"not-an-email\")\n) catch(Exception, e,\n    e message println  // email has invalid format\n)\n\nusername validate(\"valid_user123\") println  // true\nemail validate(\"user@example.com\") println  // true\n```\n\n## DSL Best Practices\n\n### 1. Natural Language Flow\n\n```io\n// Good - reads naturally\nrecipe needs(2) cups of(\"flour\")\norder shipping priority within(3) days\n\n// Bad - programmer-centric\nrecipe setAmount(2) setUnit(\"cups\") setIngredient(\"flour\")\norder setShipping(\"priority\") setDeliveryDays(3)\n```\n\n### 2. Method Chaining\n\n```io\n// Enable fluent interfaces\nObject withChaining := method(\n    call message arguments foreach(arg,\n        slotName := arg name\n        self setSlot(slotName, call evalArgAt(0))\n    )\n    self  // Always return self\n)\n\nPerson := Object clone\nPerson configure := method(\n    withChaining(\n        name(n, self name := n),\n        age(a, self age := a),\n        email(e, self email := e)\n    )\n)\n\nperson := Person clone configure \\\n    name(\"Alice\") \\\n    age(30) \\\n    email(\"alice@example.com\")\n```\n\n### 3. Context Management\n\n```io\nDSLContext := Object clone\nDSLContext stack := list()\n\nDSLContext push := method(obj,\n    stack append(obj)\n)\n\nDSLContext pop := method(\n    stack pop\n)\n\nDSLContext current := method(\n    stack last\n)\n\nDSLContext with := method(obj, block,\n    push(obj)\n    e := try(result := block call)\n    pop\n    if(e, e raise, result)\n)\n\n// Usage in DSL\nForm := Object clone\nForm fields := list()\n\nForm field := method(name,\n    f := Field clone\n    f name := name\n    DSLContext with(f,\n        call evalArgAt(1)\n    )\n    fields append(f)\n)\n\nField label := method(text,\n    DSLContext current label := text\n)\n```\n\n## Exercises\n\n1. **CSS DSL**: Create a DSL for generating CSS with nested rules and variables.\n\n2. **Graph Description Language**: Build a DSL for describing graphs and their relationships.\n\n3. **Build System DSL**: Implement a make/rake-like build system DSL.\n\n4. **BDD Testing DSL**: Create a Behavior-Driven Development testing framework.\n\n5. **Configuration Management**: Build a DSL for system configuration management.\n\n## Real-World Example: Migration DSL\n\n```io\nMigration := Object clone\nMigration changes := list()\n\nMigration createTable := method(name,\n    table := TableDefinition clone\n    table name := name\n    table columns := list()\n    \n    call evalArgAt(1)\n    \n    changes append(Map with(\n        \"type\", \"createTable\",\n        \"table\", table\n    ))\n    self\n)\n\nMigration dropTable := method(name,\n    changes append(Map with(\n        \"type\", \"dropTable\",\n        \"name\", name\n    ))\n    self\n)\n\nTableDefinition := Object clone\n\nTableDefinition column := method(name, type,\n    columns append(Map with(\n        \"name\", name,\n        \"type\", type,\n        \"constraints\", list()\n    ))\n    self\n)\n\nTableDefinition primaryKey := method(col,\n    columns last at(\"constraints\") append(\"PRIMARY KEY\")\n    self\n)\n\nTableDefinition notNull := method(\n    columns last at(\"constraints\") append(\"NOT NULL\")\n    self\n)\n\nTableDefinition unique := method(\n    columns last at(\"constraints\") append(\"UNIQUE\")\n    self\n)\n\nMigration toSQL := method(\n    sql := list()\n    \n    changes foreach(change,\n        if(change at(\"type\") == \"createTable\",\n            table := change at(\"table\")\n            stmt := \"CREATE TABLE \" .. table name .. \" (\\n\"\n            \n            cols := table columns map(col,\n                \"  \" .. col at(\"name\") .. \" \" .. col at(\"type\") .. \n                if(col at(\"constraints\") size > 0,\n                    \" \" .. col at(\"constraints\") join(\" \"),\n                    \"\"\n                )\n            )\n            \n            stmt = stmt .. cols join(\",\\n\") .. \"\\n);\"\n            sql append(stmt)\n        )\n        \n        if(change at(\"type\") == \"dropTable\",\n            sql append(\"DROP TABLE \" .. change at(\"name\") .. \";\")\n        )\n    )\n    \n    sql join(\"\\n\\n\")\n)\n\n// Usage\nmigration := Migration clone\n\nmigration createTable(\"users\",\n    column(\"id\", \"INTEGER\") primaryKey,\n    column(\"username\", \"VARCHAR(50)\") notNull unique,\n    column(\"email\", \"VARCHAR(100)\") notNull unique,\n    column(\"created_at\", \"TIMESTAMP\") notNull\n)\n\nmigration createTable(\"posts\",\n    column(\"id\", \"INTEGER\") primaryKey,\n    column(\"user_id\", \"INTEGER\") notNull,\n    column(\"title\", \"VARCHAR(200)\") notNull,\n    column(\"content\", \"TEXT\"),\n    column(\"published_at\", \"TIMESTAMP\")\n)\n\nmigration toSQL println\n```\n\n## Conclusion\n\nDomain-Specific Languages in Io demonstrate the language's expressive power. By leveraging message passing, optional parentheses, method chaining, and metaprogramming, you can create DSLs that feel natural to domain experts while remaining fully integrated with the host language.\n\nThe key to successful DSLs in Io is understanding that you're not fighting against language syntax—you're working with it. Messages become domain commands, objects become domain concepts, and the minimal syntax stays out of your way. This makes Io ideal for creating internal DSLs that are both powerful and readable.\n"},"../_index.json":{"ok":true,"status":200,"content":"{\n  \"title\": \"The Io Programming Language\",\n  \"topTitle\": \"Io\",\n  \"subtitle\": \"A comprehensive guide to prototype-based programming with Io.\",\n  \"content\": [\n    {\n      \"type\": \"ContentText\",\n      \"content\": \"This book provides an in-depth exploration of the Io programming language, designed for experienced programmers who want to understand prototype-based object-oriented programming. Through detailed comparisons with mainstream languages like JavaScript, Python, Ruby, and Java, readers will gain practical insights into Io's unique paradigm.\"\n    },\n    {\n      \"type\": \"ContentCards\",\n      \"title\": \"Chapters\",\n      \"columns\": 2,\n      \"items\": [\n        \"Preface\",\n        \"Introduction\",\n        \"Getting-Started\",\n        \"Everything-is-an-Object\",\n        \"Prototypes-Not-Classes\",\n        \"Messages-and-Slots\",\n        \"Cloning-and-Inheritance\",\n        \"Control-Flow\",\n        \"Collections\",\n        \"Blocks-and-Closures\",\n        \"Exceptions\",\n        \"Metaprogramming\",\n        \"Concurrency\",\n        \"Domain-Specific-Languages\",\n        \"C-Integration\",\n        \"Real-World-Patterns\",\n        \"Case-Studies\",\n        \"Ecosystem-and-Libraries\",\n        \"Conclusion\"\n      ]\n    }\n  ]\n}\n"},"../C-Integration/_index.json":{"ok":false,"status":404},"../C-Integration/_index.md":{"ok":true,"status":200,"content":"---\ntitle: C Integration\ntopTitle: Io\nsubtitle: \"Embedding Io in C and extending Io with high-performance C addons.\"\nnextSectionLink: true\n---\n\nIo is implemented in C and provides excellent C integration capabilities. You can extend Io with C libraries, create high-performance addons, and embed Io in C applications. This chapter explores the bidirectional relationship between Io and C.\n\n## Understanding Io's C Architecture\n\nIo's core is a small C library (around 10,000 lines) that implements:\n\n- The object model (IoObject)\n- The message passing system\n- Basic types (Number, String, List, etc.)\n- The VM and garbage collector\n\nEverything else is built on top of this foundation, either in C addons or pure Io.\n\n## Creating a Simple C Addon\n\nLet's create a basic C addon that adds a method to calculate factorials:\n\n```c\n// factorial.c\n#include \"IoState.h\"\n#include \"IoObject.h\"\n#include \"IoNumber.h\"\n\nIoObject *IoObject_factorial(IoObject *self, IoObject *locals, IoMessage *m)\n{\n    // Get the number from the receiver\n    double n = IoNumber_asDouble(self);\n    \n    if (n \u003c 0) {\n        IoState_error_(IOSTATE, m, \"factorial of negative number\");\n        return IONIL(self);\n    }\n    \n    double result = 1;\n    for (int i = 2; i \u003c= n; i++) {\n        result *= i;\n    }\n    \n    return IoNumber_newWithDouble_(IOSTATE, result);\n}\n\n// Initialize the addon\nvoid IoFactorial_init(IoState *state)\n{\n    IoObject *self = IoState_lobby(state);\n    \n    // Add method to Number prototype\n    IoObject *number = IoState_protoWithName_(state, \"Number\");\n    IoObject_addMethod_(number, \n        IOSYMBOL(\"factorial\"), \n        IoObject_factorial);\n}\n```\n\nTo compile and use:\n\n```bash\n# Compile as shared library\ngcc -shared -fPIC -o factorial.so factorial.c -lIo\n\n# In Io\nDynLib load(\"./factorial.so\")\n5 factorial println  // 120\n```\n\n## Working with Io Objects in C\n\n```c\n// Creating Io objects from C\nIoObject *IoAddon_createObject(IoObject *self, IoObject *locals, IoMessage *m)\n{\n    IoState *state = IOSTATE;\n    \n    // Create different types\n    IoObject *num = IoNumber_newWithDouble_(state, 42.0);\n    IoObject *str = IoSeq_newWithCString_(state, \"Hello from C\");\n    IoObject *list = IoList_new(state);\n    \n    // Add items to list\n    IoList_append_(list, num);\n    IoList_append_(list, str);\n    \n    // Create a new object with slots\n    IoObject *obj = IoObject_new(state);\n    IoObject_setSlot_to_(obj, IOSYMBOL(\"x\"), num);\n    IoObject_setSlot_to_(obj, IOSYMBOL(\"message\"), str);\n    IoObject_setSlot_to_(obj, IOSYMBOL(\"items\"), list);\n    \n    return obj;\n}\n\n// Accessing Io objects from C\nIoObject *IoAddon_processObject(IoObject *self, IoObject *locals, IoMessage *m)\n{\n    // Get the first argument\n    IoObject *arg = IoMessage_locals_valueArgAt_(m, locals, 0);\n    \n    // Check type\n    if (ISSEQ(arg)) {\n        char *cstr = IoSeq_asCString(arg);\n        printf(\"String argument: %s\\n\", cstr);\n    }\n    else if (ISNUMBER(arg)) {\n        double num = IoNumber_asDouble(arg);\n        printf(\"Number argument: %f\\n\", num);\n    }\n    else if (ISLIST(arg)) {\n        size_t size = IoList_size(arg);\n        printf(\"List with %zu items\\n\", size);\n    }\n    \n    return self;\n}\n```\n\n## Creating Custom Types\n\n```c\n// customtype.c - Define a Point type\n#include \"IoState.h\"\n#include \"IoObject.h\"\n#include \"IoNumber.h\"\n\n// Define the type structure\ntypedef struct {\n    IoObject obj;  // Must be first\n    double x;\n    double y;\n} IoPoint;\n\n// Type tag\nIoTag *IoPoint_tag(void)\n{\n    static IoTag *tag = NULL;\n    if (!tag) {\n        tag = IoTag_newWithName_(\"Point\");\n    }\n    return tag;\n}\n\n// Constructor\nIoPoint *IoPoint_new(IoState *state, double x, double y)\n{\n    IoPoint *self = IoObject_new(state);\n    IoObject_tag_(self, IoPoint_tag());\n    \n    self->x = x;\n    self->y = y;\n    \n    return self;\n}\n\n// Methods\nIoObject *IoPoint_x(IoPoint *self, IoObject *locals, IoMessage *m)\n{\n    return IoNumber_newWithDouble_(IOSTATE, self->x);\n}\n\nIoObject *IoPoint_y(IoPoint *self, IoObject *locals, IoMessage *m)\n{\n    return IoNumber_newWithDouble_(IOSTATE, self->y);\n}\n\nIoObject *IoPoint_distance(IoPoint *self, IoObject *locals, IoMessage *m)\n{\n    IoPoint *other = IoMessage_locals_valueArgAt_(m, locals, 0);\n    \n    if (IoObject_tag(other) != IoPoint_tag()) {\n        IoState_error_(IOSTATE, m, \"argument must be a Point\");\n        return IONIL(self);\n    }\n    \n    double dx = self->x - other->x;\n    double dy = self->y - other->y;\n    double distance = sqrt(dx*dx + dy*dy);\n    \n    return IoNumber_newWithDouble_(IOSTATE, distance);\n}\n\n// Initialize the type\nvoid IoPoint_init(IoState *state)\n{\n    IoObject *self = IoState_lobby(state);\n    \n    // Create prototype\n    IoPoint *proto = IoPoint_new(state, 0, 0);\n    IoState_registerProtoWithName_(state, proto, \"Point\");\n    \n    // Add methods\n    IoObject_addMethod_(proto, IOSYMBOL(\"x\"), IoPoint_x);\n    IoObject_addMethod_(proto, IOSYMBOL(\"y\"), IoPoint_y);\n    IoObject_addMethod_(proto, IOSYMBOL(\"distance\"), IoPoint_distance);\n}\n```\n\n## Calling Io from C\n\n```c\n// Evaluate Io code from C\nIoObject *result = IoState_doString_(state, \"1 + 2 * 3\");\ndouble value = IoNumber_asDouble(result);\nprintf(\"Result: %f\\n\", value);  // 7.0\n\n// Call Io methods from C\nIoObject *obj = IoState_doString_(state, \"Object clone\");\nIoObject *method = IoObject_getSlot_(obj, IOSYMBOL(\"type\"));\nIoObject *result = IoObject_activate(method, obj, locals, m, NULL);\nchar *type = IoSeq_asCString(result);\nprintf(\"Type: %s\\n\", type);  // Object\n\n// Send messages\nIoMessage *msg = IoMessage_newWithName_(state, IOSYMBOL(\"println\"));\nIoMessage_setCachedResult_(msg, NULL);\nIoObject *result = IoObject_perform(obj, locals, msg);\n```\n\n## Memory Management\n\nIo uses a garbage collector, but when interfacing with C, you need to be careful:\n\n```c\n// Protecting objects from GC\nIoObject *IoAddon_keepAlive(IoObject *self, IoObject *locals, IoMessage *m)\n{\n    IoState *state = IOSTATE;\n    \n    // Create object that needs to survive GC\n    IoObject *important = IoObject_new(state);\n    \n    // Add reference from a persistent object\n    IoObject_setSlot_to_(IoState_lobby(state), \n        IOSYMBOL(\"_keepAlive\"), important);\n    \n    // Or use IoState_retain/release\n    IoState_retain_(state, important);\n    \n    // Do work...\n    \n    // Release when done\n    IoState_release_(state, important);\n    \n    return important;\n}\n\n// Managing C memory\ntypedef struct {\n    IoObject obj;\n    void *cdata;\n} IoCWrapper;\n\nvoid IoCWrapper_free(IoCWrapper *self)\n{\n    if (self->cdata) {\n        free(self->cdata);\n        self->cdata = NULL;\n    }\n}\n\n// Set up finalizer\nIoTag *tag = IoTag_newWithName_(\"CWrapper\");\nIoTag_freeFunc_(tag, (IoTagFreeFunc *)IoCWrapper_free);\n```\n\n## Wrapping C Libraries\n\nExample: Wrapping a simple math library:\n\n```c\n// mathlib_wrapper.c\n#include \u003cmath.h>\n#include \"IoState.h\"\n#include \"IoObject.h\"\n#include \"IoNumber.h\"\n#include \"IoList.h\"\n\n// Wrap sin function\nIoObject *IoMath_sin(IoObject *self, IoObject *locals, IoMessage *m)\n{\n    double x = IoMessage_locals_doubleArgAt_(m, locals, 0);\n    return IoNumber_newWithDouble_(IOSTATE, sin(x));\n}\n\n// Wrap complex function\nIoObject *IoMath_stats(IoObject *self, IoObject *locals, IoMessage *m)\n{\n    IoList *list = IoMessage_locals_listArgAt_(m, locals, 0);\n    size_t count = IoList_size(list);\n    \n    if (count == 0) {\n        return IoList_new(IOSTATE);\n    }\n    \n    double sum = 0, min = INFINITY, max = -INFINITY;\n    \n    for (size_t i = 0; i \u003c count; i++) {\n        IoObject *item = IoList_at_(list, i);\n        double value = IoNumber_asDouble(item);\n        \n        sum += value;\n        if (value \u003c min) min = value;\n        if (value > max) max = value;\n    }\n    \n    double mean = sum / count;\n    \n    // Return statistics as list\n    IoList *result = IoList_new(IOSTATE);\n    IoList_append_(result, IoNumber_newWithDouble_(IOSTATE, mean));\n    IoList_append_(result, IoNumber_newWithDouble_(IOSTATE, min));\n    IoList_append_(result, IoNumber_newWithDouble_(IOSTATE, max));\n    \n    return result;\n}\n\nvoid IoMathLib_init(IoState *state)\n{\n    IoObject *math = IoObject_new(state);\n    IoState_registerProtoWithName_(state, math, \"Math\");\n    \n    IoObject_addMethod_(math, IOSYMBOL(\"sin\"), IoMath_sin);\n    IoObject_addMethod_(math, IOSYMBOL(\"stats\"), IoMath_stats);\n}\n```\n\nUsage in Io:\n\n```io\nDynLib load(\"./mathlib.so\")\n\nMath sin(3.14159 / 2) println  // 1.0\n\nstats := Math stats(list(1, 2, 3, 4, 5))\n\"Mean: \" .. stats at(0) println  // Mean: 3\n\"Min: \" .. stats at(1) println   // Min: 1\n\"Max: \" .. stats at(2) println   // Max: 5\n```\n\n## Embedding Io in C Applications\n\n```c\n// embed_io.c - Embedding Io in a C application\n#include \u003cstdio.h>\n#include \"IoState.h\"\n#include \"IoObject.h\"\n#include \"IoSeq.h\"\n\n// Custom function exposed to Io\nIoObject *App_log(IoObject *self, IoObject *locals, IoMessage *m)\n{\n    char *msg = IoMessage_locals_cStringArgAt_(m, locals, 0);\n    printf(\"[APP LOG] %s\\n\", msg);\n    return self;\n}\n\nint main(int argc, char *argv[])\n{\n    // Initialize Io\n    IoState *state = IoState_new();\n    IoState_init(state);\n    \n    // Add custom functions\n    IoObject *lobby = IoState_lobby(state);\n    IoObject *app = IoObject_new(state);\n    IoState_registerProtoWithName_(state, app, \"App\");\n    IoObject_addMethod_(app, IOSYMBOL(\"log\"), App_log);\n    \n    // Load and run Io script\n    IoState_doFile_(state, \"script.io\");\n    \n    // Interact with Io objects\n    IoObject *result = IoState_doString_(state, \n        \"x := 10; y := 20; x + y\");\n    printf(\"Result from Io: %f\\n\", IoNumber_asDouble(result));\n    \n    // Clean up\n    IoState_free(state);\n    \n    return 0;\n}\n```\n\nThe Io script (script.io):\n\n```io\nApp log(\"Hello from Io!\")\n\n// Define functions for C to call\ncalculate := method(a, b,\n    App log(\"Calculating in Io\")\n    a * b + 100\n)\n```\n\n## Performance Optimization\n\n```c\n// Optimized array operations\nIoObject *IoArray_sum(IoObject *self, IoObject *locals, IoMessage *m)\n{\n    // Get underlying C array for performance\n    UArray *array = IoSeq_rawUArray(self);\n    size_t size = UArray_size(array);\n    uint8_t *data = UArray_bytes(array);\n    int itemSize = UArray_itemSize(array);\n    \n    double sum = 0;\n    \n    // Fast path for different types\n    if (itemSize == sizeof(double)) {\n        double *doubles = (double *)data;\n        for (size_t i = 0; i \u003c size; i++) {\n            sum += doubles[i];\n        }\n    }\n    else if (itemSize == sizeof(float)) {\n        float *floats = (float *)data;\n        for (size_t i = 0; i \u003c size; i++) {\n            sum += floats[i];\n        }\n    }\n    \n    return IoNumber_newWithDouble_(IOSTATE, sum);\n}\n\n// Batch operations\nIoObject *IoMatrix_multiply(IoObject *self, IoObject *locals, IoMessage *m)\n{\n    IoObject *other = IoMessage_locals_valueArgAt_(m, locals, 0);\n    \n    // Get dimensions\n    int rows1 = IoMessage_locals_intArgAt_(m, locals, 1);\n    int cols1 = IoMessage_locals_intArgAt_(m, locals, 2);\n    int cols2 = IoMessage_locals_intArgAt_(m, locals, 3);\n    \n    // Get raw data pointers\n    double *data1 = (double *)IoSeq_rawBytes(self);\n    double *data2 = (double *)IoSeq_rawBytes(other);\n    \n    // Allocate result\n    IoSeq *result = IoSeq_newWithData_length_(IOSTATE, \n        NULL, rows1 * cols2 * sizeof(double));\n    double *resultData = (double *)IoSeq_rawBytes(result);\n    \n    // Optimized matrix multiplication\n    for (int i = 0; i \u003c rows1; i++) {\n        for (int j = 0; j \u003c cols2; j++) {\n            double sum = 0;\n            for (int k = 0; k \u003c cols1; k++) {\n                sum += data1[i * cols1 + k] * data2[k * cols2 + j];\n            }\n            resultData[i * cols2 + j] = sum;\n        }\n    }\n    \n    return result;\n}\n```\n\n## Debugging C Addons\n\n```c\n// Debug helpers\n#define IO_DEBUG 1\n\n#ifdef IO_DEBUG\n    #define DEBUG_PRINT(fmt, ...) \\\n        fprintf(stderr, \"DEBUG: \" fmt \"\\n\", ##__VA_ARGS__)\n#else\n    #define DEBUG_PRINT(fmt, ...)\n#endif\n\nIoObject *IoDebug_function(IoObject *self, IoObject *locals, IoMessage *m)\n{\n    DEBUG_PRINT(\"Function called with %d arguments\", \n        IoMessage_argCount(m));\n    \n    // Print argument types\n    for (int i = 0; i \u003c IoMessage_argCount(m); i++) {\n        IoObject *arg = IoMessage_locals_valueArgAt_(m, locals, i);\n        DEBUG_PRINT(\"  Arg %d: %s\", i, IoObject_name(arg));\n    }\n    \n    // Check for memory issues\n    IoState *state = IOSTATE;\n    IoState_check(state);\n    \n    return self;\n}\n```\n\n## Common Integration Patterns\n\n### Callback Pattern\n\n```c\n// Store Io blocks as callbacks\ntypedef struct {\n    IoObject obj;\n    IoObject *callback;\n} IoCallbackWrapper;\n\nIoObject *IoWrapper_setCallback(IoCallbackWrapper *self, \n    IoObject *locals, IoMessage *m)\n{\n    IoObject *block = IoMessage_locals_valueArgAt_(m, locals, 0);\n    \n    // Retain the block\n    IoState_retain_(IOSTATE, block);\n    if (self->callback) {\n        IoState_release_(IOSTATE, self->callback);\n    }\n    self->callback = block;\n    \n    return self;\n}\n\n// Call the Io callback from C\nvoid triggerCallback(IoCallbackWrapper *wrapper, double value)\n{\n    if (wrapper->callback) {\n        IoObject *arg = IoNumber_newWithDouble_(IOSTATE, value);\n        IoObject_perform(wrapper->callback, wrapper, \n            IoMessage_newWithName_label_(IOSTATE, \n                IOSYMBOL(\"call\"), arg));\n    }\n}\n```\n\n### Event System\n\n```c\n// Event emitter in C\ntypedef struct {\n    IoObject obj;\n    IoMap *handlers;  // Event name -> List of handlers\n} IoEventEmitter;\n\nIoObject *IoEventEmitter_on(IoEventEmitter *self, \n    IoObject *locals, IoMessage *m)\n{\n    IoSeq *event = IoMessage_locals_seqArgAt_(m, locals, 0);\n    IoObject *handler = IoMessage_locals_valueArgAt_(m, locals, 1);\n    \n    IoList *handlers = IoMap_at_(self->handlers, event);\n    if (!handlers) {\n        handlers = IoList_new(IOSTATE);\n        IoMap_atPut_(self->handlers, event, handlers);\n    }\n    \n    IoList_append_(handlers, handler);\n    return self;\n}\n\nIoObject *IoEventEmitter_emit(IoEventEmitter *self, \n    IoObject *locals, IoMessage *m)\n{\n    IoSeq *event = IoMessage_locals_seqArgAt_(m, locals, 0);\n    IoList *handlers = IoMap_at_(self->handlers, event);\n    \n    if (handlers) {\n        size_t count = IoList_size(handlers);\n        for (size_t i = 0; i \u003c count; i++) {\n            IoObject *handler = IoList_at_(handlers, i);\n            \n            // Pass remaining arguments to handler\n            IoMessage *msg = IoMessage_newWithName_(IOSTATE, \n                IOSYMBOL(\"call\"));\n            for (int j = 1; j \u003c IoMessage_argCount(m); j++) {\n                IoMessage_addArg_(msg, IoMessage_argAt_(m, j));\n            }\n            \n            IoObject_perform(handler, locals, msg);\n        }\n    }\n    \n    return self;\n}\n```\n\n## Build System Integration\n\nMakefile for Io addon:\n\n```makefile\n# Makefile for Io addon\nCC = gcc\nCFLAGS = -shared -fPIC -Wall -O2\nINCLUDES = -I$(IO_HOME)/include\nLIBS = -L$(IO_HOME)/lib -lIo\n\nADDON = myaddon.so\nSOURCES = myaddon.c utils.c\nOBJECTS = $(SOURCES:.c=.o)\n\nall: $(ADDON)\n\n$(ADDON): $(OBJECTS)\n    $(CC) $(CFLAGS) -o $@ $^ $(LIBS)\n\n%.o: %.c\n    $(CC) $(CFLAGS) $(INCLUDES) -c $\u003c -o $@\n\nclean:\n    rm -f $(OBJECTS) $(ADDON)\n\ninstall: $(ADDON)\n    cp $(ADDON) $(IO_HOME)/addons/\n\ntest: $(ADDON)\n    io test_addon.io\n```\n\n## Exercises\n\n1. **SQLite Wrapper**: Create a complete SQLite wrapper for Io.\n\n2. **Graphics Library**: Wrap SDL or Cairo for graphics programming.\n\n3. **Network Addon**: Implement high-performance networking primitives.\n\n4. **Crypto Library**: Wrap OpenSSL for cryptographic operations.\n\n5. **Scientific Computing**: Create bindings for BLAS/LAPACK.\n\n## Conclusion\n\nC integration is one of Io's strongest features. The ability to seamlessly extend Io with C libraries, create high-performance addons, and embed Io in C applications makes it practical for real-world applications. The clean C API and simple object model make integration straightforward, while the garbage collector handles most memory management concerns.\n\nWhether you're optimizing hot paths, wrapping existing libraries, or embedding a scripting language in your application, Io's C integration provides the tools you need while maintaining the simplicity and elegance of the language.\n"}}</script>
+</body>
+</html>

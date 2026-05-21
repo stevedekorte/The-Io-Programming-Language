@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="stylesheet" href="../colvmn/style.css">
+<title>Getting Started with Io – Io</title>
+  <link rel="alternate" type="text/plain" title="llms.txt" href="/llms.txt">
+  <meta name="description" content="Install Io, explore the REPL, and write your first programs.">
+</head>
+<body>
+<div class="page loaded"><div class="header"><div><h1>Getting Started with Io</h1><a class="back-link" href="../index.html">&larr; The Io Programming Language</a></div><a class="brand" href="../index.html">Io</a></div><p class="intro">Install Io, explore the REPL, and write your first programs.</p><nav class="toc"><ul><li><a href="#installing-io">Installing Io</a></li><li><a href="#the-repl-your-io-playground">The REPL: Your Io Playground</a></li><li><a href="#your-first-io-program">Your First Io Program</a></li><li><a href="#understanding-basic-syntax">Understanding Basic Syntax</a></li><li><a href="#variables-and-assignment">Variables and Assignment</a></li><li><a href="#control-flow">Control Flow</a></li><li><a href="#creating-objects">Creating Objects</a></li><li><a href="#methods">Methods</a></li><li><a href="#lists-and-iteration">Lists and Iteration</a></li><li><a href="#working-with-files">Working with Files</a></li><li><a href="#a-more-complete-example">A More Complete Example</a></li><li><a href="#key-takeaways">Key Takeaways</a></li><li><a href="#exercises">Exercises</a></li><li><a href="#whats-different">What's Different?</a></li><li><a href="#moving-forward">Moving Forward</a></li></ul></nav><div class="section"><div class="section-body"><p>The best way to understand Io is to use it. In this chapter, we'll install Io, explore its REPL (Read-Eval-Print Loop), and write our first programs. By the end, you'll have a feel for Io's syntax and flow.</p></div></div><h2 id="installing-io">Installing Io</h2><div class="section"><div class="section-body"><h3 id="macos">macOS</h3><p>If you're on macOS with Homebrew, installation is simple:</p><pre><code>brew install io</code></pre><h3 id="linux">Linux</h3><p>On most Linux distributions, you'll need to build from source:</p><pre><code>git clone https://github.com/IoLanguage/io.git
+cd io
+mkdir build
+cd build
+cmake ..
+make
+sudo make install</code></pre><h3 id="windows">Windows</h3><p>Windows users should use WSL (Windows Subsystem for Linux) and follow the Linux instructions, or use Docker:</p><pre><code>docker run -it --rm stevedekorte/io</code></pre><h3 id="verifying-installation">Verifying Installation</h3><p>Once installed, verify Io is working:</p><pre><code>$ io --version
+Io Programming Language, v. 20170906
+
+$ io
+Io&gt; "Hello, World!" println
+Hello, World!
+==&gt; Hello, World!
+Io&gt; ^C</code></pre></div></div><h2 id="the-repl-your-io-playground">The REPL: Your Io Playground</h2><div class="section"><div class="section-body"><p>Io's REPL is where you'll spend most of your learning time. Unlike compiled languages where you write, compile, and run, Io lets you experiment immediately.</p><p>Start the REPL by typing <code>io</code>:</p><pre><code>$ io
+Io&gt;</code></pre><p>The prompt <code>Io></code> indicates Io is ready for input. Let's explore:</p><pre><code>Io&gt; 2 + 2
+==&gt; 4
+
+Io&gt; "Hello" .. " " .. "World"
+==&gt; Hello World
+
+Io&gt; 10 &gt; 5
+==&gt; true</code></pre><p>Notice the <code>==></code> prefix? That shows the return value of your expression. Everything in Io returns a value.</p><h3 id="repl-tips">REPL Tips</h3><ol><li><strong>Multi-line input</strong>: The REPL detects incomplete expressions:</li></ol><pre><code>Io&gt; if(true,
+...     "yes" println,
+...     "no" println
+... )
+yes
+==&gt; yes</code></pre><ol><li><strong>Previous result</strong>: Use <code>_</code> to reference the last result:</li></ol><pre><code>Io&gt; 100 * 2
+==&gt; 200
+Io&gt; _ + 50
+==&gt; 250</code></pre><ol><li><strong>Getting help</strong>: The REPL has built-in documentation:</li></ol><pre><code>Io&gt; Lobby slotNames
+==&gt; list(Protos, _, exit, forward, set_)
+
+Io&gt; Number slotNames sort
+==&gt; list(%, *, +, -, /, &lt;, &lt;=, ==, &gt;, &gt;=, abs, acos, asin, atan, between, ceil, cos, ...)</code></pre></div></div><h2 id="your-first-io-program">Your First Io Program</h2><div class="section"><div class="section-body"><p>Let's write the traditional "Hello, World!" program. Create a file called <code>hello.io</code>:</p><pre><code>"Hello, World!" println</code></pre><p>Run it:</p><pre><code>$ io hello.io
+Hello, World!</code></pre><p>That's it. No class definitions, no main function, no boilerplate. Compare with Java:</p><pre><code>public class Hello {
+    public static void main(String[] args) {
+        System.out.println("Hello, World!");
+    }
+}</code></pre><p>Or even Python:</p><pre><code>if __name__ == "__main__":
+    print("Hello, World!")</code></pre><p>Io just runs your code.</p></div></div><h2 id="understanding-basic-syntax">Understanding Basic Syntax</h2><div class="section"><div class="section-body"><p>Io's syntax is minimal. Let's explore the basics:</p><h3 id="messages-and-receivers">Messages and Receivers</h3><p>In Io, everything is about sending messages to objects:</p><pre><code>"hello" size         // Send 'size' message to "hello"
+==&gt; 5
+
+"hello" at(0)        // Send 'at' message with argument 0
+==&gt; h
+
+"hello" upper        // Send 'upper' message
+==&gt; HELLO</code></pre><p>Compare with method calls in Python:</p><pre><code>"hello".upper()      # Python</code></pre><pre><code>"hello" upper        // Io - parentheses optional for no arguments</code></pre><h3 id="arguments">Arguments</h3><p>Messages can have arguments, passed in parentheses:</p><pre><code>"hello" at(1)                    // One argument
+==&gt; e
+
+"hello" slice(1, 3)              // Two arguments
+==&gt; el
+
+List append(1, 2, 3)            // Multiple arguments
+==&gt; list(1, 2, 3)</code></pre><h3 id="operators-are-messages">Operators are Messages</h3><p>This is crucial: operators in Io are just messages with special precedence:</p><pre><code>2 + 3          // Send message "+" to 2 with argument 3
+2 +(3)         // Exactly the same thing
+2 send("+", 3) // Still the same thing!</code></pre><p>This uniformity means you can redefine operators:</p><pre><code>Number + := method(n, self - n)  // Redefine + to subtract!
+5 + 3
+==&gt; 2</code></pre><p>(Don't actually do this in real code!)</p></div></div><h2 id="variables-and-assignment">Variables and Assignment</h2><div class="section"><div class="section-body"><p>In Io, variables are just slots on objects. By default, you're working with the <code>Lobby</code> object:</p><pre><code>x := 10        // Create slot 'x' on Lobby with value 10
+x println      // Print it
+==&gt; 10
+
+x = 20         // Update existing slot
+x println
+==&gt; 20
+
+y = 30         // Error! Slot doesn't exist
+// Exception: Slot y not found</code></pre><p>Note the distinction:</p><ul><li><code>:=</code> creates a new slot</li><li><code>=</code> updates an existing slot</li></ul><p>This prevents accidental variable creation from typos:</p><pre><code>counter := 0
+countr = 1     // Error - probably a typo!</code></pre><p>Compare with JavaScript's similar issue:</p><pre><code>let counter = 0;
+countr = 1;    // Creates global variable - probably a bug!</code></pre></div></div><h2 id="control-flow">Control Flow</h2><div class="section"><div class="section-body"><p>Io's control structures are methods, not special syntax:</p><h3 id="if-statements">If Statements</h3><pre><code>if(10 &gt; 5,
+    "Yes" println,
+    "No" println
+)
+// Prints: Yes</code></pre><p>Compare with Python:</p><pre><code>if 10 &gt; 5:
+    print("Yes")
+else:
+    print("No")</code></pre><p>Since <code>if</code> is a method, you can even look at its implementation:</p><pre><code>Io&gt; if
+==&gt; method(...)</code></pre><h3 id="loops">Loops</h3><pre><code>// While loop
+i := 0
+while(i &lt; 5,
+    i println
+    i = i + 1
+)
+
+// For loop
+for(i, 0, 4,
+    i println
+)
+
+// Times loop
+5 times(i,
+    i println
+)</code></pre></div></div><h2 id="creating-objects">Creating Objects</h2><div class="section"><div class="section-body"><p>Let's create our first custom object:</p><pre><code>Person := Object clone
+Person name := "Unknown"
+Person greet := method(
+    ("Hello, I'm " .. name) println
+)
+
+alice := Person clone
+alice name = "Alice"
+alice greet
+// Prints: Hello, I'm Alice</code></pre><p>Compare with Python:</p><pre><code>class Person:
+    def __init__(self):
+        self.name = "Unknown"
+    
+    def greet(self):
+        print(f"Hello, I'm {self.name}")
+
+alice = Person()
+alice.name = "Alice"
+alice.greet()</code></pre><p>The key difference: Io has no class definition. <code>Person</code> is just an object we're using as a prototype.</p></div></div><h2 id="methods">Methods</h2><div class="section"><div class="section-body"><p>Methods in Io are created with the <code>method</code> function:</p><pre><code>Calculator := Object clone
+Calculator add := method(a, b, a + b)
+Calculator multiply := method(a, b, a * b)
+
+calc := Calculator clone
+calc add(5, 3) println        // 8
+calc multiply(4, 7) println    // 28</code></pre><p>Methods have access to <code>self</code> (the receiver):</p><pre><code>Counter := Object clone
+Counter count := 0
+Counter increment := method(
+    count = count + 1
+    self            // Return self for chaining
+)
+
+c := Counter clone
+c increment increment increment
+c count println    // 3</code></pre></div></div><h2 id="lists-and-iteration">Lists and Iteration</h2><div class="section"><div class="section-body"><p>Lists are fundamental in Io:</p><pre><code>numbers := list(1, 2, 3, 4, 5)
+
+// Iteration
+numbers foreach(n,
+    n println
+)
+
+// Map
+squared := numbers map(n, n * n)
+squared println    // list(1, 4, 9, 16, 25)
+
+// Select (filter)
+evens := numbers select(n, n % 2 == 0)
+evens println      // list(2, 4)
+
+// Reduce
+sum := numbers reduce(+)
+sum println        // 15</code></pre><p>Compare with Python:</p><pre><code>numbers = [1, 2, 3, 4, 5]
+
+# Iteration
+for n in numbers:
+    print(n)
+
+# Map
+squared = [n * n for n in numbers]
+
+# Filter
+evens = [n for n in numbers if n % 2 == 0]
+
+# Reduce
+from functools import reduce
+sum = reduce(lambda a, b: a + b, numbers)</code></pre></div></div><h2 id="working-with-files">Working with Files</h2><div class="section"><div class="section-body"><p>Reading and writing files is straightforward:</p><pre><code>// Write to file
+file := File with("test.txt")
+file openForWriting
+file write("Hello, file!")
+file close
+
+// Read from file
+file := File with("test.txt")
+file openForReading
+contents := file contents
+contents println
+file close
+
+// Or more concisely
+File with("test.txt") contents println</code></pre></div></div><h2 id="a-more-complete-example">A More Complete Example</h2><div class="section"><div class="section-body"><p>Let's build something more substantial&mdash;a simple to-do list:</p><pre><code>// todo.io - A simple to-do list manager
+
+TodoList := Object clone
+TodoList items := list()
+
+TodoList add := method(task,
+    items append(task)
+    self
+)
+
+TodoList show := method(
+    if(items size == 0,
+        "No tasks!" println,
+        items foreach(i, task,
+            ("  " .. (i + 1) .. ". " .. task) println
+        )
+    )
+    self
+)
+
+TodoList complete := method(index,
+    if(index &gt; 0 and index &lt;= items size,
+        task := items at(index - 1)
+        items removeAt(index - 1)
+        ("Completed: " .. task) println,
+        "Invalid task number" println
+    )
+    self
+)
+
+TodoList save := method(filename,
+    File with(filename) openForWriting write(items asJson) close
+    "Saved!" println
+    self
+)
+
+TodoList load := method(filename,
+    if(File with(filename) exists,
+        items = Yajl parseJson(File with(filename) contents)
+        "Loaded!" println,
+        "File not found" println
+    )
+    self
+)
+
+// Usage
+todo := TodoList clone
+todo add("Learn Io") add("Build something cool") add("Share with friends")
+todo show
+//   1. Learn Io
+//   2. Build something cool  
+//   3. Share with friends
+
+todo complete(1)
+// Completed: Learn Io
+
+todo show
+//   1. Build something cool
+//   2. Share with friends</code></pre></div></div><h2 id="key-takeaways">Key Takeaways</h2><div class="section"><div class="section-body"><p>Having written your first Io programs, you've probably noticed:</p><ol><li><strong>Minimal syntax</strong>: No keywords for defining classes, functions, or variables. Everything uses the same message-passing syntax.</li><li><strong>Immediate feedback</strong>: The REPL makes experimentation effortless.</li><li><strong>Uniform model</strong>: Whether you're doing arithmetic, defining methods, or creating objects, it's all message passing.</li><li><strong>Flexibility</strong>: You can modify anything, even built-in types and operators.</li><li><strong>Simplicity</strong>: Programs are often shorter than their equivalents in other languages.</li></ol></div></div><h2 id="exercises">Exercises</h2><div class="section"><div class="section-body"><p>Try these exercises to solidify your understanding:</p><ol><li><strong>Number methods</strong>: Add a <code>squared</code> method to <code>Number</code> that returns the square of a number. Test it with <code>5 squared</code>.</li><li><strong>String reversal</strong>: Create a method on <code>Sequence</code> (Io's string type) called <code>reverse</code> that returns the reversed string.</li><li><strong>Bank account</strong>: Create a <code>BankAccount</code> object with <code>balance</code>, <code>deposit</code>, and <code>withdraw</code> methods. Include protection against negative balances.</li><li><strong>FizzBuzz</strong>: Implement FizzBuzz in Io (print numbers 1-100, but "Fizz" for multiples of 3, "Buzz" for multiples of 5, "FizzBuzz" for both).</li><li><strong>Method chaining</strong>: Create a <code>StringBuilder</code> object that allows chaining: <code>StringBuilder clone add("Hello") add(" ") add("World") toString</code></li></ol></div></div><h2 id="whats-different">What's Different?</h2><div class="section"><div class="section-body"><p>If you're coming from mainstream languages, here's what might feel strange:</p><ul><li><strong>No compile step</strong>: Your code runs immediately</li><li><strong>No type declarations</strong>: Everything is dynamically typed</li><li><strong>No class keyword</strong>: Objects are created by cloning</li><li><strong>Operators aren't special</strong>: They're just messages</li><li><strong>Everything returns a value</strong>: Even assignments and control structures</li></ul><p>These differences aren't arbitrary&mdash;they all flow from Io's core principle of uniform message passing.</p></div></div><h2 id="moving-forward">Moving Forward</h2><div class="section"><div class="section-body"><p>You now have enough Io knowledge to explore the deeper concepts. You can:</p><ul><li>Create and manipulate objects</li><li>Define methods</li><li>Use control structures</li><li>Work with collections</li><li>Read and write files</li></ul><p>In the next chapter, we'll dive deep into Io's object model and understand what "everything is an object" really means.</p></div></div><div class="page-footer"><a class="next-link" href="../Everything-is-an-Object/index.html">Everything is an Object &rarr;</a></div></div>
+<script src="../colvmn/layout/bundle.js" defer></script>
+  <script type="application/json" id="colvmn-prefetch">{"./_index.json":{"ok":false,"status":404},"./_index.md":{"ok":true,"status":200,"content":"---\ntitle: Getting Started with Io\ntopTitle: Io\nsubtitle: \"Install Io, explore the REPL, and write your first programs.\"\nnextSectionLink: true\n---\n\nThe best way to understand Io is to use it. In this chapter, we'll install Io, explore its REPL (Read-Eval-Print Loop), and write our first programs. By the end, you'll have a feel for Io's syntax and flow.\n\n## Installing Io\n\n### macOS\n\nIf you're on macOS with Homebrew, installation is simple:\n\n```bash\nbrew install io\n```\n\n### Linux\n\nOn most Linux distributions, you'll need to build from source:\n\n```bash\ngit clone https://github.com/IoLanguage/io.git\ncd io\nmkdir build\ncd build\ncmake ..\nmake\nsudo make install\n```\n\n### Windows\n\nWindows users should use WSL (Windows Subsystem for Linux) and follow the Linux instructions, or use Docker:\n\n```bash\ndocker run -it --rm stevedekorte/io\n```\n\n### Verifying Installation\n\nOnce installed, verify Io is working:\n\n```bash\n$ io --version\nIo Programming Language, v. 20170906\n\n$ io\nIo> \"Hello, World!\" println\nHello, World!\n==> Hello, World!\nIo> ^C\n```\n\n## The REPL: Your Io Playground\n\nIo's REPL is where you'll spend most of your learning time. Unlike compiled languages where you write, compile, and run, Io lets you experiment immediately.\n\nStart the REPL by typing `io`:\n\n```io\n$ io\nIo>\n```\n\nThe prompt `Io>` indicates Io is ready for input. Let's explore:\n\n```io\nIo> 2 + 2\n==> 4\n\nIo> \"Hello\" .. \" \" .. \"World\"\n==> Hello World\n\nIo> 10 > 5\n==> true\n```\n\nNotice the `==>` prefix? That shows the return value of your expression. Everything in Io returns a value.\n\n### REPL Tips\n\n1. **Multi-line input**: The REPL detects incomplete expressions:\n\n```io\nIo> if(true,\n...     \"yes\" println,\n...     \"no\" println\n... )\nyes\n==> yes\n```\n\n2. **Previous result**: Use `_` to reference the last result:\n\n```io\nIo> 100 * 2\n==> 200\nIo> _ + 50\n==> 250\n```\n\n3. **Getting help**: The REPL has built-in documentation:\n\n```io\nIo> Lobby slotNames\n==> list(Protos, _, exit, forward, set_)\n\nIo> Number slotNames sort\n==> list(%, *, +, -, /, \u003c, \u003c=, ==, >, >=, abs, acos, asin, atan, between, ceil, cos, ...)\n```\n\n## Your First Io Program\n\nLet's write the traditional \"Hello, World!\" program. Create a file called `hello.io`:\n\n```io\n\"Hello, World!\" println\n```\n\nRun it:\n\n```bash\n$ io hello.io\nHello, World!\n```\n\nThat's it. No class definitions, no main function, no boilerplate. Compare with Java:\n\n```java\npublic class Hello {\n    public static void main(String[] args) {\n        System.out.println(\"Hello, World!\");\n    }\n}\n```\n\nOr even Python:\n\n```python\nif __name__ == \"__main__\":\n    print(\"Hello, World!\")\n```\n\nIo just runs your code.\n\n## Understanding Basic Syntax\n\nIo's syntax is minimal. Let's explore the basics:\n\n### Messages and Receivers\n\nIn Io, everything is about sending messages to objects:\n\n```io\n\"hello\" size         // Send 'size' message to \"hello\"\n==> 5\n\n\"hello\" at(0)        // Send 'at' message with argument 0\n==> h\n\n\"hello\" upper        // Send 'upper' message\n==> HELLO\n```\n\nCompare with method calls in Python:\n\n```python\n\"hello\".upper()      # Python\n```\n\n```io\n\"hello\" upper        // Io - parentheses optional for no arguments\n```\n\n### Arguments\n\nMessages can have arguments, passed in parentheses:\n\n```io\n\"hello\" at(1)                    // One argument\n==> e\n\n\"hello\" slice(1, 3)              // Two arguments\n==> el\n\nList append(1, 2, 3)            // Multiple arguments\n==> list(1, 2, 3)\n```\n\n### Operators are Messages\n\nThis is crucial: operators in Io are just messages with special precedence:\n\n```io\n2 + 3          // Send message \"+\" to 2 with argument 3\n2 +(3)         // Exactly the same thing\n2 send(\"+\", 3) // Still the same thing!\n```\n\nThis uniformity means you can redefine operators:\n\n```io\nNumber + := method(n, self - n)  // Redefine + to subtract!\n5 + 3\n==> 2\n```\n\n(Don't actually do this in real code!)\n\n## Variables and Assignment\n\nIn Io, variables are just slots on objects. By default, you're working with the `Lobby` object:\n\n```io\nx := 10        // Create slot 'x' on Lobby with value 10\nx println      // Print it\n==> 10\n\nx = 20         // Update existing slot\nx println\n==> 20\n\ny = 30         // Error! Slot doesn't exist\n// Exception: Slot y not found\n```\n\nNote the distinction:\n- `:=` creates a new slot\n- `=` updates an existing slot\n\nThis prevents accidental variable creation from typos:\n\n```io\ncounter := 0\ncountr = 1     // Error - probably a typo!\n```\n\nCompare with JavaScript's similar issue:\n\n```javascript\nlet counter = 0;\ncountr = 1;    // Creates global variable - probably a bug!\n```\n\n## Control Flow\n\nIo's control structures are methods, not special syntax:\n\n### If Statements\n\n```io\nif(10 > 5,\n    \"Yes\" println,\n    \"No\" println\n)\n// Prints: Yes\n```\n\nCompare with Python:\n\n```python\nif 10 > 5:\n    print(\"Yes\")\nelse:\n    print(\"No\")\n```\n\nSince `if` is a method, you can even look at its implementation:\n\n```io\nIo> if\n==> method(...)\n```\n\n### Loops\n\n```io\n// While loop\ni := 0\nwhile(i \u003c 5,\n    i println\n    i = i + 1\n)\n\n// For loop\nfor(i, 0, 4,\n    i println\n)\n\n// Times loop\n5 times(i,\n    i println\n)\n```\n\n## Creating Objects\n\nLet's create our first custom object:\n\n```io\nPerson := Object clone\nPerson name := \"Unknown\"\nPerson greet := method(\n    (\"Hello, I'm \" .. name) println\n)\n\nalice := Person clone\nalice name = \"Alice\"\nalice greet\n// Prints: Hello, I'm Alice\n```\n\nCompare with Python:\n\n```python\nclass Person:\n    def __init__(self):\n        self.name = \"Unknown\"\n    \n    def greet(self):\n        print(f\"Hello, I'm {self.name}\")\n\nalice = Person()\nalice.name = \"Alice\"\nalice.greet()\n```\n\nThe key difference: Io has no class definition. `Person` is just an object we're using as a prototype.\n\n## Methods\n\nMethods in Io are created with the `method` function:\n\n```io\nCalculator := Object clone\nCalculator add := method(a, b, a + b)\nCalculator multiply := method(a, b, a * b)\n\ncalc := Calculator clone\ncalc add(5, 3) println        // 8\ncalc multiply(4, 7) println    // 28\n```\n\nMethods have access to `self` (the receiver):\n\n```io\nCounter := Object clone\nCounter count := 0\nCounter increment := method(\n    count = count + 1\n    self            // Return self for chaining\n)\n\nc := Counter clone\nc increment increment increment\nc count println    // 3\n```\n\n## Lists and Iteration\n\nLists are fundamental in Io:\n\n```io\nnumbers := list(1, 2, 3, 4, 5)\n\n// Iteration\nnumbers foreach(n,\n    n println\n)\n\n// Map\nsquared := numbers map(n, n * n)\nsquared println    // list(1, 4, 9, 16, 25)\n\n// Select (filter)\nevens := numbers select(n, n % 2 == 0)\nevens println      // list(2, 4)\n\n// Reduce\nsum := numbers reduce(+)\nsum println        // 15\n```\n\nCompare with Python:\n\n```python\nnumbers = [1, 2, 3, 4, 5]\n\n# Iteration\nfor n in numbers:\n    print(n)\n\n# Map\nsquared = [n * n for n in numbers]\n\n# Filter\nevens = [n for n in numbers if n % 2 == 0]\n\n# Reduce\nfrom functools import reduce\nsum = reduce(lambda a, b: a + b, numbers)\n```\n\n## Working with Files\n\nReading and writing files is straightforward:\n\n```io\n// Write to file\nfile := File with(\"test.txt\")\nfile openForWriting\nfile write(\"Hello, file!\")\nfile close\n\n// Read from file\nfile := File with(\"test.txt\")\nfile openForReading\ncontents := file contents\ncontents println\nfile close\n\n// Or more concisely\nFile with(\"test.txt\") contents println\n```\n\n## A More Complete Example\n\nLet's build something more substantial—a simple to-do list:\n\n```io\n// todo.io - A simple to-do list manager\n\nTodoList := Object clone\nTodoList items := list()\n\nTodoList add := method(task,\n    items append(task)\n    self\n)\n\nTodoList show := method(\n    if(items size == 0,\n        \"No tasks!\" println,\n        items foreach(i, task,\n            (\"  \" .. (i + 1) .. \". \" .. task) println\n        )\n    )\n    self\n)\n\nTodoList complete := method(index,\n    if(index > 0 and index \u003c= items size,\n        task := items at(index - 1)\n        items removeAt(index - 1)\n        (\"Completed: \" .. task) println,\n        \"Invalid task number\" println\n    )\n    self\n)\n\nTodoList save := method(filename,\n    File with(filename) openForWriting write(items asJson) close\n    \"Saved!\" println\n    self\n)\n\nTodoList load := method(filename,\n    if(File with(filename) exists,\n        items = Yajl parseJson(File with(filename) contents)\n        \"Loaded!\" println,\n        \"File not found\" println\n    )\n    self\n)\n\n// Usage\ntodo := TodoList clone\ntodo add(\"Learn Io\") add(\"Build something cool\") add(\"Share with friends\")\ntodo show\n//   1. Learn Io\n//   2. Build something cool  \n//   3. Share with friends\n\ntodo complete(1)\n// Completed: Learn Io\n\ntodo show\n//   1. Build something cool\n//   2. Share with friends\n```\n\n## Key Takeaways\n\nHaving written your first Io programs, you've probably noticed:\n\n1. **Minimal syntax**: No keywords for defining classes, functions, or variables. Everything uses the same message-passing syntax.\n\n2. **Immediate feedback**: The REPL makes experimentation effortless.\n\n3. **Uniform model**: Whether you're doing arithmetic, defining methods, or creating objects, it's all message passing.\n\n4. **Flexibility**: You can modify anything, even built-in types and operators.\n\n5. **Simplicity**: Programs are often shorter than their equivalents in other languages.\n\n## Exercises\n\nTry these exercises to solidify your understanding:\n\n1. **Number methods**: Add a `squared` method to `Number` that returns the square of a number. Test it with `5 squared`.\n\n2. **String reversal**: Create a method on `Sequence` (Io's string type) called `reverse` that returns the reversed string.\n\n3. **Bank account**: Create a `BankAccount` object with `balance`, `deposit`, and `withdraw` methods. Include protection against negative balances.\n\n4. **FizzBuzz**: Implement FizzBuzz in Io (print numbers 1-100, but \"Fizz\" for multiples of 3, \"Buzz\" for multiples of 5, \"FizzBuzz\" for both).\n\n5. **Method chaining**: Create a `StringBuilder` object that allows chaining: `StringBuilder clone add(\"Hello\") add(\" \") add(\"World\") toString`\n\n## What's Different?\n\nIf you're coming from mainstream languages, here's what might feel strange:\n\n- **No compile step**: Your code runs immediately\n- **No type declarations**: Everything is dynamically typed\n- **No class keyword**: Objects are created by cloning\n- **Operators aren't special**: They're just messages\n- **Everything returns a value**: Even assignments and control structures\n\nThese differences aren't arbitrary—they all flow from Io's core principle of uniform message passing.\n\n## Moving Forward\n\nYou now have enough Io knowledge to explore the deeper concepts. You can:\n\n- Create and manipulate objects\n- Define methods\n- Use control structures\n- Work with collections\n- Read and write files\n\nIn the next chapter, we'll dive deep into Io's object model and understand what \"everything is an object\" really means.\n"},"../_index.json":{"ok":true,"status":200,"content":"{\n  \"title\": \"The Io Programming Language\",\n  \"topTitle\": \"Io\",\n  \"subtitle\": \"A comprehensive guide to prototype-based programming with Io.\",\n  \"content\": [\n    {\n      \"type\": \"ContentText\",\n      \"content\": \"This book provides an in-depth exploration of the Io programming language, designed for experienced programmers who want to understand prototype-based object-oriented programming. Through detailed comparisons with mainstream languages like JavaScript, Python, Ruby, and Java, readers will gain practical insights into Io's unique paradigm.\"\n    },\n    {\n      \"type\": \"ContentCards\",\n      \"title\": \"Chapters\",\n      \"columns\": 2,\n      \"items\": [\n        \"Preface\",\n        \"Introduction\",\n        \"Getting-Started\",\n        \"Everything-is-an-Object\",\n        \"Prototypes-Not-Classes\",\n        \"Messages-and-Slots\",\n        \"Cloning-and-Inheritance\",\n        \"Control-Flow\",\n        \"Collections\",\n        \"Blocks-and-Closures\",\n        \"Exceptions\",\n        \"Metaprogramming\",\n        \"Concurrency\",\n        \"Domain-Specific-Languages\",\n        \"C-Integration\",\n        \"Real-World-Patterns\",\n        \"Case-Studies\",\n        \"Ecosystem-and-Libraries\",\n        \"Conclusion\"\n      ]\n    }\n  ]\n}\n"},"../Everything-is-an-Object/_index.json":{"ok":false,"status":404},"../Everything-is-an-Object/_index.md":{"ok":true,"status":200,"content":"---\ntitle: Everything is an Object\ntopTitle: Io\nsubtitle: \"What it really means when every value—numbers, booleans, methods—is an object.\"\nnextSectionLink: true\n---\n\n\"Everything is an object\" is a claim made by many languages. Ruby says it. Smalltalk says it. Even Java claims it (though primitives like `int` and `boolean` break the rule). But what does it really mean? And how thoroughly does Io embrace this principle?\n\nIn this chapter, we'll explore how Io takes \"everything is an object\" to its logical extreme, and what this means for how you write and think about programs.\n\n## What Is an Object?\n\nBefore we dive into Io's object model, let's establish what we mean by \"object.\" In most object-oriented languages, an object is:\n\n1. A bundle of state (data/attributes/fields)\n2. A set of behaviors (methods/functions)\n3. An identity (distinct from other objects)\n\nIn Java, you might have:\n\n```java\nclass Dog {\n    String name;        // state\n    int age;           // state\n    \n    void bark() {      // behavior\n        System.out.println(\"Woof!\");\n    }\n}\n\nDog fido = new Dog();  // identity (fido is distinct from other Dogs)\n```\n\nBut Java immediately breaks its own rules:\n\n```java\nint x = 5;          // Not an object!\nx.toString();       // Error: int cannot be dereferenced\nInteger y = 5;      // Now it's an object (boxed)\ny.toString();       // \"5\"\n```\n\nLet's see how Io handles this.\n\n## Numbers are Objects\n\nIn Io, numbers aren't primitives—they're full objects:\n\n```io\n5 type println           // Number\n5 slotNames println      // list(%, *, +, -, /, \u003c, ...)\n\n// Numbers have methods\n5 abs println            // 5\n-5 abs println           // 5\n5 sqrt println           // 2.236...\n5 sin println            // -0.958...\n\n// You can add methods to numbers!\nNumber double := method(self * 2)\n5 double println         // 10\n\n// You can even inspect a number's prototype chain\n5 proto println          // Number_0x...\n5 proto proto println    // Object_0x...\n```\n\nCompare this to Python, which claims everything is an object:\n\n```python\nx = 5\nprint(type(x))           # \u003cclass 'int'>\nprint(dir(x))            # ['__abs__', '__add__', ...]\n\n# But you can't add methods to numbers\nx.double = lambda: x * 2  # AttributeError!\n```\n\nPython's numbers are objects, but they're *immutable* objects with a *fixed* set of methods. Io's numbers are fully modifiable objects.\n\n## Strings are Objects (and Mutable!)\n\n```io\ntext := \"hello\"\ntext type println        // Sequence\n\n// Strings have methods\ntext size println        // 5\ntext upper println       // HELLO\ntext reverse println     // olleh\n\n// But here's where it gets interesting - strings are MUTABLE\ntext atPut(0, 72)       // ASCII for 'H'\ntext println            // Hello\n\n// You can add methods to strings\nSequence shout := method(self upper .. \"!!!\")\n\"hello\" shout println   // HELLO!!!\n```\n\nThis mutability might shock programmers from languages where strings are immutable:\n\n```python\n# Python - strings are immutable\ntext = \"hello\"\ntext[0] = 'H'  # TypeError: 'str' object does not support item assignment\n\n# Java - strings are immutable\nString text = \"hello\";\ntext.charAt(0) = 'H';  // Error: cannot assign a value\n```\n\n## Booleans are Objects\n\nEven `true` and `false` are objects:\n\n```io\ntrue type println        // true\nfalse type println       // false\n\n// They have methods\ntrue and(false) println  // false\ntrue or(false) println   // true\ntrue not println         // false\n\n// The actual objects\ntrue println             // true\ntrue proto println       // Object_0x...\n\n// You can even add methods to booleans!\ntrue celebrate := method(\"Yay!\" println)\n(5 > 3) celebrate       // Yay!\n```\n\nThis is different from most languages where booleans are either primitives or special immutable objects.\n\n## nil is an Object\n\nEven nothingness is an object in Io:\n\n```io\nnil type println         // Object\nnil slotNames println    // list(type, ...)\n\n// nil has methods!\nnil isNil println        // true\nnil not println          // true\n\n// You can add methods to nil\nnil greet := method(\"Hello from nothing!\" println)\nx := nil\nx greet                  // Hello from nothing!\n```\n\nCompare with JavaScript's confusing null:\n\n```javascript\ntypeof null          // \"object\" (but it's not really)\nnull.toString()      // TypeError: Cannot read property 'toString' of null\n```\n\n## Methods are Objects\n\nThis is where things get really interesting. Methods themselves are objects:\n\n```io\nadd := method(a, b, a + b)\nadd type println         // Block\n\n// Methods have methods!\nadd argumentNames println // list(a, b)\nadd code println         // a +(b)\n\n// You can modify methods\nadd code println                    // a +(b)\nadd setCode(block(a, b, a * b))   // Change implementation!\nadd(3, 4) println                  // 12 (now multiplies!)\n\n// You can create methods from strings\ncode := \"a + b + 100\"\nnewMethod := block(a, b) setCode(code)\nnewMethod call(5, 10) println      // 115\n```\n\nThis is far more powerful than most languages' function objects:\n\n```python\n# Python\ndef add(a, b):\n    return a + b\n\nprint(type(add))         # \u003cclass 'function'>\nprint(add.__code__)      # \u003ccode object...>\n# But you can't easily modify the function's code at runtime\n```\n\n## Control Structures are Objects (Messages)\n\nThis might be the most mind-bending: `if`, `while`, and `for` aren't syntax—they're methods:\n\n```io\n// 'if' is a method on Object\nif type println          // nil (it's a method)\n\n// You can see its implementation\nObject getSlot(\"if\") println  // method(...)\n\n// You can even redefine it!\nObject if := method(condition, trueBlock, falseBlock,\n    \"Making a decision...\" println\n    if(condition, trueBlock call, falseBlock call)\n)\n\nif(true, \"yes\" println, \"no\" println)\n// Prints: Making a decision...\n// Prints: yes\n```\n\nLet's create our own control structure:\n\n```io\nObject unless := method(condition, block,\n    if(condition not, block call)\n)\n\nunless(5 > 10,\n    \"Math still works!\" println\n)\n// Prints: Math still works!\n```\n\nTry doing that in Java or C++!\n\n## Operators are Objects (Messages)\n\nOperators aren't special syntax—they're messages:\n\n```io\n// These are equivalent\n2 + 3\n2 +(3)\n2 send(\"+\", 3)\n\n// You can redefine operators\nNumber + := method(n,\n    \"Adding #{self} and #{n}\" interpolate println\n    self + n  // Would cause infinite recursion!\n)\n\n// Let's be more careful\nNumber plusWithLogging := Number getSlot(\"+\")\nNumber + := method(n,\n    \"Adding #{self} and #{n}\" interpolate println\n    self plusWithLogging(n)\n)\n\n2 + 3\n// Prints: Adding 2 and 3\n// Returns: 5\n```\n\nYou can even create new operators:\n\n```io\nOperatorTable addOperator(\"**\", 3)  // Right-associative, precedence 3\nNumber ** := method(n, self pow(n))\n\n2 ** 3 println  // 8\n2 ** 3 ** 2 println  // 512 (right-associative: 2 ** (3 ** 2))\n```\n\n## Lists are Objects\n\n```io\nnums := list(1, 2, 3)\nnums type println        // List\n\n// Lists have many methods\nnums size println        // 3\nnums first println       // 1\nnums last println        // 3\nnums reverse println     // list(3, 2, 1)\n\n// Lists are mutable\nnums append(4)\nnums println            // list(1, 2, 3, 4)\n\n// You can add custom methods to lists\nList sum := method(\n    self reduce(+)\n)\n\nlist(1, 2, 3, 4, 5) sum println  // 15\n```\n\n## Even the Lobby is an Object\n\nThe global namespace in Io is an object called `Lobby`:\n\n```io\nLobby type println       // Object\nLobby slotNames println  // list(all your global variables)\n\n// When you create a \"global\" variable, you're adding a slot to Lobby\nx := 10\nLobby hasSlot(\"x\") println  // true\nLobby x println             // 10\n\n// You can manipulate the global namespace as an object\nLobby removeSlot(\"x\")\nx println                   // Exception: Slot x not found\n```\n\nThis is radically different from languages with special global scope rules.\n\n## Messages Themselves are Objects\n\nWhen you send a message, that message is an object:\n\n```io\nmsg := message(2 + 3)\nmsg type println         // Message\nmsg name println         // +\nmsg arguments println    // list(Message_0x...)\nmsg arguments first code println  // 3\n\n// You can evaluate messages\nmsg doInContext(Lobby) println   // 5\n\n// You can build messages programmatically\nmsg := Message clone setName(\"+\") setArguments(list(Message clone setName(\"3\")))\n2 doMessage(msg) println          // 5\n```\n\nThis is the foundation of Io's metaprogramming capabilities.\n\n## The Object Hierarchy\n\nLet's explore how all these objects relate:\n\n```io\n// Everything ultimately inherits from Object\n5 proto proto == Object println      // true\n\"hi\" proto proto == Object println   // true\ntrue proto == Object println         // true\nlist() proto proto == Object println // true\n\n// You can walk the prototype chain\nobj := 5\nwhile(obj,\n    obj type println\n    obj = obj proto\n)\n// Prints:\n// Number\n// Object\n```\n\n## Practical Implications\n\nWhat does it mean that everything is truly an object?\n\n### 1. Uniform Interface\n\nYou can treat everything uniformly:\n\n```io\nthings := list(5, \"hello\", true, nil, method(x, x * 2), list(1, 2))\n\nthings foreach(thing,\n    (\"Type: \" .. thing type) println\n)\n// Type: Number\n// Type: Sequence  \n// Type: true\n// Type: Object\n// Type: Block\n// Type: List\n```\n\n### 2. No Special Cases\n\nYou don't need to remember different rules for different types:\n\n```io\n// Everything can receive messages\n5 println\n\"hello\" println\ntrue println\nnil println\nlist(1,2,3) println\n\n// Everything can be inspected\n5 slotNames\n\"hello\" slotNames\ntrue slotNames\nnil slotNames\n```\n\n### 3. Extensibility\n\nYou can extend anything:\n\n```io\n// Add methods to numbers for DSL\nNumber days := method(\n    Duration clone setDays(self)\n)\n\nNumber hours := method(\n    Duration clone setHours(self)\n)\n\n// Now you can write\ndeadline := Date now + 3 days + 4 hours\n```\n\n### 4. Debugging Power\n\nSince everything is an object, you can inspect everything:\n\n```io\nObject debugMethod := method(name,\n    m := self getSlot(name)\n    (\"Method \" .. name .. \":\") println\n    (\"  Arguments: \" .. m argumentNames) println\n    (\"  Code: \" .. m code) println\n)\n\nList debugMethod(\"append\")\n// Method append:\n//   Arguments: list(...)\n//   Code: ...\n```\n\n## Comparison with Other Languages\n\n### Ruby: \"Everything is an object\" (mostly)\n\n```ruby\n5.class          # Integer\n\"hello\".class    # String\ntrue.class       # TrueClass\nnil.class        # NilClass\n\n# But...\nif.class         # SyntaxError! 'if' isn't an object\n```\n\n### Python: \"Everything is an object\" (sort of)\n\n```python\ntype(5)          # \u003cclass 'int'>\ntype(\"hello\")    # \u003cclass 'str'>\ntype(True)       # \u003cclass 'bool'>\ntype(None)       # \u003cclass 'NoneType'>\n\n# But...\ntype(if)         # SyntaxError! 'if' isn't an object\ntype(+)          # SyntaxError! '+' isn't an object\n```\n\n### JavaScript: \"Everything is an object\" (except when it's not)\n\n```javascript\ntypeof 5         // \"number\" (primitive)\ntypeof \"hello\"   // \"string\" (primitive)\ntypeof true      // \"boolean\" (primitive)\ntypeof {}        // \"object\"\n\n// Autoboxing happens sometimes\n(5).toString()   // \"5\" (temporarily boxed)\n5.x = 10         // Silently fails!\n```\n\n### Io: Everything IS an object (no exceptions)\n\n```io\n5 type           // Number (object)\n\"hello\" type     // Sequence (object)\ntrue type        // true (object)\nif type          // nil (it's a method, which is an object)\n+ type           // nil (it's a method, which is an object)\n```\n\n## Exercises\n\n1. **Object Inspector**: Write a method `inspect` that can be called on any object and prints:\n   - Its type\n   - Its slot names\n   - Its prototype chain\n\n2. **Custom Boolean**: Create your own boolean system with objects `Yes` and `No` that have methods `and`, `or`, and `not`.\n\n3. **Operator Overloading**: Define a `Vector` object with `x` and `y` slots, then overload the `+` operator to add vectors.\n\n4. **Control Structure**: Create a `repeat(n, block)` control structure that executes a block n times.\n\n5. **Message Logger**: Modify the `Object` prototype to log every message sent to any object (hint: override `forward`).\n\n## Philosophical Implications\n\nIo's radical \"everything is an object\" approach has profound implications:\n\n1. **Simplicity through uniformity**: One concept (objects) explains everything\n2. **Power through openness**: Nothing is sealed or special\n3. **Learning through exploration**: You can inspect and understand everything\n4. **Danger through freedom**: You can break everything\n\nThis last point is important. With great power comes great responsibility. Io trusts you completely. You can redefine addition, break the `if` statement, or delete critical system objects. This isn't a bug—it's a philosophy.\n\n## Conclusion\n\nIn Io, \"everything is an object\" isn't marketing—it's a fundamental truth that shapes every aspect of the language. Numbers, strings, booleans, nil, methods, operators, control structures, and even messages themselves are all objects with slots that can be inspected, modified, and extended.\n\nThis uniformity eliminates special cases, enables powerful metaprogramming, and provides a conceptually simple (if initially mind-bending) programming model. Once you internalize that *everything* is just objects sending messages to other objects, Io's entire design clicks into place.\n\nNext, we'll explore how objects relate to each other through Io's prototype-based inheritance system—a world without classes.\n"}}</script>
+</body>
+</html>

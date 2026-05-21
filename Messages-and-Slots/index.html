@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="stylesheet" href="../colvmn/style.css">
+<title>Messages and Slots – Io</title>
+  <link rel="alternate" type="text/plain" title="llms.txt" href="/llms.txt">
+  <meta name="description" content="The two mechanisms that drive every computation in Io.">
+</head>
+<body>
+<div class="page loaded"><div class="header"><div><h1>Messages and Slots</h1><a class="back-link" href="../index.html">&larr; The Io Programming Language</a></div><a class="brand" href="../index.html">Io</a></div><p class="intro">The two mechanisms that drive every computation in Io.</p><nav class="toc"><ul><li><a href="#the-anatomy-of-a-message">The Anatomy of a Message</a></li><li><a href="#slots-the-objects-memory">Slots: The Object's Memory</a></li><li><a href="#the-message-resolution-algorithm">The Message Resolution Algorithm</a></li><li><a href="#creating-and-modifying-slots">Creating and Modifying Slots</a></li><li><a href="#methods-are-just-slots">Methods Are Just Slots</a></li><li><a href="#the-self-and-sender-context">The 'self' and 'sender' Context</a></li><li><a href="#message-forwarding">Message Forwarding</a></li><li><a href="#lazy-evaluation-with-messages">Lazy Evaluation with Messages</a></li><li><a href="#call-introspection">Call Introspection</a></li><li><a href="#operator-messages">Operator Messages</a></li><li><a href="#assignment-messages">Assignment Messages</a></li><li><a href="#method-activation-vs-value-access">Method Activation vs. Value Access</a></li><li><a href="#building-a-message-based-dsl">Building a Message-Based DSL</a></li><li><a href="#performance-considerations">Performance Considerations</a></li><li><a href="#common-patterns">Common Patterns</a></li><li><a href="#debugging-messages">Debugging Messages</a></li><li><a href="#exercises">Exercises</a></li><li><a href="#advanced-message-techniques">Advanced Message Techniques</a></li><li><a href="#conclusion">Conclusion</a></li></ul></nav><div class="section"><div class="section-body"><p>At the heart of Io lies a simple but powerful idea: all computation happens through message passing. Objects communicate by sending messages to each other, and objects respond to messages by looking up slots. This chapter explores this fundamental mechanism in depth.</p></div></div><h2 id="the-anatomy-of-a-message">The Anatomy of a Message</h2><div class="section"><div class="section-body"><p>When you write this in Io:</p><pre><code>person setName("Alice")</code></pre><p>What actually happens? Let's break it down:</p><ol><li><code>person</code> is the <strong>receiver</strong> - the object receiving the message</li><li><code>setName</code> is the <strong>message name</strong> (or selector)</li><li><code>"Alice"</code> is the <strong>argument</strong> to the message</li><li>The entire expression is a <strong>message send</strong></li></ol><p>But here's where it gets interesting. Messages are objects too:</p><pre><code>// Create a message object
+msg := message(person setName("Alice"))
+
+// Inspect it
+msg name println          // setName
+msg arguments println     // list(Message_0x...)
+msg arguments first code println  // "Alice"
+
+// Execute it
+msg doInContext(Lobby)    // Actually calls person setName("Alice")</code></pre></div></div><h2 id="slots-the-objects-memory">Slots: The Object's Memory</h2><div class="section"><div class="section-body"><p>Slots are named storage locations in objects. They can hold any value:</p><pre><code>obj := Object clone
+
+// Create slots with different values
+obj number := 42                    // Number
+obj text := "hello"                 // String
+obj method := method(x, x * 2)      // Method
+obj child := Object clone            // Another object
+obj flag := true                     // Boolean
+
+// List all slots
+obj slotNames println
+// list(number, text, method, child, flag)
+
+// Check for slots
+obj hasSlot("number") println       // true
+obj hasSlot("missing") println      // false
+
+// Get slot values
+obj getSlot("number") println       // 42
+obj getSlot("method") println       // method(x, ...)</code></pre></div></div><h2 id="the-message-resolution-algorithm">The Message Resolution Algorithm</h2><div class="section"><div class="section-body"><p>When an object receives a message, Io follows a specific algorithm to find the corresponding slot:</p><pre><code>Animal := Object clone
+Animal speak := method("generic sound" println)
+
+Dog := Animal clone
+Dog speak := method("woof" println)
+Dog wagTail := method("wagging..." println)
+
+rover := Dog clone
+rover name := "Rover"
+
+// When rover receives 'speak':
+rover speak
+// 1. Look for 'speak' in rover - not found
+// 2. Look for 'speak' in rover's proto (Dog) - found!
+// 3. Execute Dog's speak method with rover as self
+
+// When rover receives 'name':
+rover name
+// 1. Look for 'name' in rover - found!
+// 2. Return the value
+
+// Visual representation:
+/*
+    Object
+      ↑
+    Animal (speak: "generic sound")
+      ↑
+     Dog (speak: "woof", wagTail)
+      ↑
+    rover (name: "Rover")
+*/</code></pre></div></div><h2 id="creating-and-modifying-slots">Creating and Modifying Slots</h2><div class="section"><div class="section-body"><p>Io distinguishes between creating new slots and updating existing ones:</p><pre><code>obj := Object clone
+
+// Create a new slot with :=
+obj x := 10
+obj hasSlot("x") println         // true
+
+// Update existing slot with =
+obj x = 20
+obj x println                    // 20
+
+// Trying to update non-existent slot fails
+obj y = 30                       // Exception: Slot y not found
+
+// But you can use setSlot to create or update
+obj setSlot("y", 30)            // Creates if doesn't exist
+obj y println                    // 30
+
+// Remove slots
+obj removeSlot("y")
+obj hasSlot("y") println        // false</code></pre><p>This distinction helps catch typos:</p><pre><code>counter := 0
+countr = 1    // Error! Probably meant 'counter'</code></pre></div></div><h2 id="methods-are-just-slots">Methods Are Just Slots</h2><div class="section"><div class="section-body"><p>In Io, methods aren't special&mdash;they're just slots that hold executable blocks:</p><pre><code>Calculator := Object clone
+
+// Method is just a slot containing a method object
+Calculator add := method(a, b, a + b)
+
+// You can manipulate methods like any other value
+addMethod := Calculator getSlot("add")
+addMethod type println           // Block
+
+// You can copy methods between objects
+ScientificCalc := Object clone
+ScientificCalc addition := Calculator getSlot("add")
+ScientificCalc addition(5, 3) println  // 8
+
+// You can even store methods in variables
+operation := method(x, x * 2)
+Calculator double := operation
+Calculator double(21) println    // 42</code></pre></div></div><h2 id="the-self-and-sender-context">The 'self' and 'sender' Context</h2><div class="section"><div class="section-body"><p>Every method has access to special variables:</p><pre><code>Printer := Object clone
+Printer name := "HP"
+Printer print := method(doc,
+    ("Printer: " .. self name) println    // self = receiver
+    ("Sender: " .. sender type) println   // sender = who sent the message
+    ("Document: " .. doc) println
+)
+
+Computer := Object clone
+Computer sendJob := method(
+    Printer print("report.pdf")
+)
+
+Computer sendJob
+// Printer: HP
+// Sender: Computer
+// Document: report.pdf</code></pre></div></div><h2 id="message-forwarding">Message Forwarding</h2><div class="section"><div class="section-body"><p>When an object doesn't have a slot for a received message, it calls <code>forward</code>:</p><pre><code>Proxy := Object clone
+Proxy target := nil
+Proxy forward := method(
+    ("Forwarding " .. call message name .. " to target") println
+    call evalArgAt(0) // This would forward to target
+)
+
+p := Proxy clone
+p doSomething("arg")
+// Forwarding doSomething to target</code></pre><p>This enables powerful patterns like delegation and method missing:</p><pre><code>// Ruby-style method_missing
+DynamicObject := Object clone
+DynamicObject forward := method(
+    methodName := call message name
+    if(methodName beginsWithSeq("get"),
+        # Handle getters
+        property := methodName afterSeq("get") lowercase
+        self getSlot(property),
+        # Handle setters
+        if(methodName beginsWithSeq("set"),
+            property := methodName afterSeq("set") lowercase
+            value := call evalArgAt(0)
+            self setSlot(property, value)
+        )
+    )
+)
+
+obj := DynamicObject clone
+obj setName("Alice")     // Creates 'name' slot
+obj getName println       // "Alice"</code></pre></div></div><h2 id="lazy-evaluation-with-messages">Lazy Evaluation with Messages</h2><div class="section"><div class="section-body"><p>Messages don't evaluate immediately&mdash;they're data structures you can manipulate:</p><pre><code>// Messages as data
+expr := message(2 + 3 * 4)
+expr println             // 2 +(3 *(4))
+
+// Evaluate when ready
+result := expr doInContext(Lobby)
+result println           // 14
+
+// Modify messages before evaluation
+expr := message(x + y)
+context := Object clone
+context x := 10
+context y := 20
+expr doInContext(context) println  // 30</code></pre><p>This enables macro-like capabilities:</p><pre><code>// Create a timing macro
+Object time := method(
+    code := call argAt(0)  // Get the message, not its value
+    start := Date now
+    result := code doInContext(call sender)
+    elapsed := Date now - start
+    ("Elapsed: " .. elapsed) println
+    result
+)
+
+// Use it
+time(
+    sum := 0
+    for(i, 1, 1000000, sum = sum + i)
+    sum
+)
+// Elapsed: 0.234
+// Returns: 500000500000</code></pre></div></div><h2 id="call-introspection">Call Introspection</h2><div class="section"><div class="section-body"><p>The <code>call</code> object provides detailed information about the current method invocation:</p><pre><code>Object debug := method(
+    "=== Call Debug ===" println
+    ("Sender: " .. call sender type) println
+    ("Target: " .. call target type) println
+    ("Message: " .. call message name) println
+    ("Args: " .. call message arguments) println
+    ("Activated: " .. call activated type) println
+    "================" println
+)
+
+TestObject := Object clone
+TestObject test := method(
+    debug
+)
+
+TestObject test
+// === Call Debug ===
+// Sender: Lobby
+// Target: TestObject
+// Message: debug
+// Args: list()
+// Activated: Block
+// ================</code></pre></div></div><h2 id="operator-messages">Operator Messages</h2><div class="section"><div class="section-body"><p>Operators are messages with special precedence rules. Unlike many languages where operators are built-in syntax, in Io they're regular messages that follow configurable precedence levels. This means you can treat operators like any other method - you can override them, create new ones, or call them using regular message passing syntax.</p><p>The OperatorTable manages operator precedence, with levels from 0 (highest) to 13 (lowest). Standard arithmetic follows familiar rules: multiplication and division (level 3) bind tighter than addition and subtraction (level 4). Assignment operators like := and = have the lowest precedence (level 13), ensuring they capture everything to their right.</p><pre><code>// These are equivalent
+2 + 3 * 4
+2 +(3 *(4))
+
+// You can see the precedence
+OperatorTable println
+
+// You can add custom operators
+OperatorTable addOperator("@@", 5)
+Number @@ := method(n,
+    self pow(n) + n pow(self)
+)
+
+2 @@ 3 println  // 17 (2^3 + 3^2 = 8 + 9)
+
+// Operators are just messages
+5 send("+", 3) println  // 8
+"hello" send("at", 1) println  // e</code></pre><p>This unified treatment of operators as messages enables powerful metaprogramming techniques. You can intercept arithmetic operations for logging, create domain-specific operators for mathematical or business logic, or even implement operator overloading for custom types - all using the same message passing mechanism that underlies the entire language.</p></div></div><h2 id="assignment-messages">Assignment Messages</h2><div class="section"><div class="section-body"><p>Even assignment is message passing:</p><pre><code>// These are equivalent
+x := 10
+setSlot("x", 10)
+
+// And these
+x = 20
+updateSlot("x", 20)
+
+// You can override assignment behavior
+Object setSlot := method(name, value,
+    ("Setting " .. name .. " to " .. value) println
+    resend  // Call original setSlot
+)
+
+y := 42
+// Setting y to 42</code></pre></div></div><h2 id="method-activation-vs-value-access">Method Activation vs. Value Access</h2><div class="section"><div class="section-body"><p>Io distinguishes between activatable and non-activatable values:</p><pre><code>obj := Object clone
+
+// Methods are activatable - they run when accessed
+obj greet := method("Hello!" println)
+obj greet  // Prints "Hello!"
+
+// Other values are just returned
+obj name := "Alice"
+obj name  // Returns "Alice"
+
+// You can get a method without activating it
+m := obj getSlot("greet")
+m println  // method(...)
+
+// And activate it later
+m call  // Prints "Hello!"
+
+// Check if something is activatable
+obj getSlot("greet") isActivatable println  // true
+obj getSlot("name") isActivatable println   // false</code></pre></div></div><h2 id="building-a-message-based-dsl">Building a Message-Based DSL</h2><div class="section"><div class="section-body"><p>Let's build a simple HTML DSL using messages:</p><pre><code>HTML := Object clone
+HTML forward := method(
+    tagName := call message name
+    args := call message arguments
+    
+    // Build opening tag
+    result := "&lt;" .. tagName
+    
+    // Handle attributes (first arg if it's a Map)
+    if(args size &gt; 0 and args at(0) name == "curlyBrackets",
+        attrs := call evalArgAt(0)
+        attrs foreach(key, value,
+            result = result .. " " .. key .. "=\"" .. value .. "\""
+        )
+        args removeFirst
+    )
+    
+    result = result .. "&gt;"
+    
+    // Handle content
+    args foreach(arg,
+        content := call sender doMessage(arg)
+        if(content, result = result .. content)
+    )
+    
+    // Closing tag
+    result = result .. "&lt;/" .. tagName .. "&gt;"
+    result
+)
+
+// Usage
+html := HTML clone
+
+page := html div({ "class": "container" },
+    html h1("Welcome"),
+    html p("This is a paragraph"),
+    html ul(
+        html li("Item 1"),
+        html li("Item 2")
+    )
+)
+
+page println
+// &lt;div class="container"&gt;&lt;h1&gt;Welcome&lt;/h1&gt;&lt;p&gt;This is a paragraph&lt;/p&gt;&lt;ul&gt;&lt;li&gt;Item 1&lt;/li&gt;&lt;li&gt;Item 2&lt;/li&gt;&lt;/ul&gt;&lt;/div&gt;</code></pre></div></div><h2 id="performance-considerations">Performance Considerations</h2><div class="section"><div class="section-body"><p>Message passing has overhead compared to direct function calls:</p><pre><code>// Traditional method call
+obj := Object clone
+obj directMethod := method(x, x * 2)
+
+// Message construction and sending
+msg := Message clone setName("directMethod") setArguments(list(Message clone setName("5")))
+
+// Benchmark
+time(
+    100000 times(obj directMethod(5))
+)
+// 0.015000 seconds
+
+time(
+    100000 times(obj doMessage(msg))
+)
+// 0.048000 seconds
+
+// Direct calls are ~3x faster, but message objects enable metaprogramming</code></pre></div></div><h2 id="common-patterns">Common Patterns</h2><div class="section"><div class="section-body"><p>Message passing and slot manipulation enable elegant implementations of common design patterns. These patterns leverage Io's dynamic nature to create flexible, maintainable code structures that would require significant boilerplate in more static languages.</p><h3 id="property-access-pattern">Property Access Pattern</h3><p>This pattern demonstrates how to dynamically generate getters and setters using message construction. Instead of manually writing accessor methods for each property, we use Io's metaprogramming capabilities to create them on demand. The generated methods follow a naming convention where properties are stored with an underscore prefix internally, while the public interface uses clean method names.</p><pre><code>Person := Object clone
+Person init := method(
+    self name := nil
+    self age := nil
+    self
+)
+
+// Generate getters/setters with messages
+Person addAccessors := method(slotName,
+    // Getter
+    self setSlot(slotName,
+        method(self getSlot("_" .. slotName))
+    )
+
+    // Setter
+    self setSlot("set" .. slotName asCapitalized,
+        method(value, self setSlot("_" .. slotName, value))
+    )
+)
+
+Person addAccessors("name")
+Person addAccessors("age")
+
+p := Person clone
+p setName("Alice")
+p name println  // "Alice"</code></pre><p>The beauty of this approach is that it scales effortlessly - adding new properties requires just one line of code per property, and the accessor methods are created with consistent behavior and naming. This pattern is particularly useful when building data models or domain objects where property access needs to be controlled or monitored.</p><h3 id="chain-of-responsibility">Chain of Responsibility</h3><p>The Chain of Responsibility pattern creates a pipeline of handlers where each handler decides whether to process a request or pass it to the next handler. In Io, this pattern is particularly clean because message passing naturally supports delegation. Each handler in the chain examines the request and either processes it or forwards it using simple message passing.</p><pre><code>Handler := Object clone
+Handler next := nil
+Handler handle := method(request,
+    if(self canHandle(request),
+        self process(request),
+        if(next, next handle(request))
+    )
+)
+
+AuthHandler := Handler clone
+AuthHandler canHandle := method(request,
+    request hasSlot("needsAuth")
+)
+AuthHandler process := method(request,
+    "Authenticating..." println
+)
+
+LogHandler := Handler clone
+LogHandler canHandle := method(request, true)
+LogHandler process := method(request,
+    ("Logging: " .. request type) println
+)
+
+// Build chain
+auth := AuthHandler clone
+log := LogHandler clone
+auth next := log
+
+// Process requests
+request := Object clone
+request type := "GET"
+request needsAuth := true
+
+auth handle(request)
+// Authenticating...
+// Logging: GET</code></pre><p>This pattern is invaluable for building middleware systems, request processors, or event handling pipelines. The chain can be dynamically reconfigured at runtime by simply changing the <code>next</code> references, and new handler types can be added without modifying existing code. The pattern also naturally supports optional processing - handlers can choose to stop the chain or allow it to continue based on the request's characteristics.</p></div></div><h2 id="debugging-messages">Debugging Messages</h2><div class="section"><div class="section-body"><p>Understanding message flow is crucial for debugging:</p><pre><code>Object trace := method(
+    self setSlot("forward",
+        method(
+            ("Missing: " .. call message name) println
+            ("Arguments: " .. call message arguments) println
+            ("Sender: " .. sender type) println
+        )
+    )
+    self
+)
+
+buggy := Object clone trace
+buggy doSomethingWrong(1, 2, 3)
+// Missing: doSomethingWrong
+// Arguments: list(1, 2, 3)
+// Sender: Lobby</code></pre></div></div><h2 id="exercises">Exercises</h2><div class="section"><div class="section-body"><ol><li><strong>Message Logger</strong>: Create a wrapper that logs all messages sent to an object, including arguments and return values.</li><li><strong>Lazy Properties</strong>: Implement properties that are only computed when first accessed, then cached.</li><li><strong>Message Queue</strong>: Build an object that queues messages and executes them later in order.</li><li><strong>Method Decorators</strong>: Create a system for wrapping methods with before/after behavior using messages.</li><li><strong>Message Router</strong>: Build a router that directs messages to different handlers based on patterns.</li></ol></div></div><h2 id="advanced-message-techniques">Advanced Message Techniques</h2><div class="section"><div class="section-body"><h3 id="message-rewriting">Message Rewriting</h3><pre><code>Rewriter := Object clone
+Rewriter forward := method(
+    msg := call message
+    
+    // Rewrite add to multiply
+    if(msg name == "add",
+        msg setName("multiply")
+    )
+    
+    // Continue with modified message
+    resend
+)
+
+calc := Rewriter clone
+calc multiply := method(a, b, a * b)
+calc add(3, 4) println  // 12 (rewritten to multiply!)</code></pre><h3 id="conditional-message-sending">Conditional Message Sending</h3><pre><code>Object sendIf := method(condition, messageName,
+    if(condition,
+        self doMessage(Message clone setName(messageName))
+    )
+)
+
+Object sendUnless := method(condition, messageName,
+    if(condition not,
+        self doMessage(Message clone setName(messageName))
+    )
+)
+
+obj := Object clone
+obj greet := method("Hello!" println)
+
+obj sendIf(true, "greet")      // Hello!
+obj sendUnless(false, "greet")  // Hello!</code></pre></div></div><h2 id="conclusion">Conclusion</h2><div class="section"><div class="section-body"><p>Messages and slots form the foundation of Io's object model. Every computation&mdash;from simple arithmetic to complex method calls&mdash;is accomplished through message passing. Objects store their state and behavior in slots, and respond to messages by looking up the corresponding slots.</p><p>This uniform model provides incredible flexibility. You can intercept messages, forward them, rewrite them, or queue them. You can introspect the entire message-passing process. You can build DSLs that feel native to the language. And you can debug by tracing the flow of messages through your system.</p><p>Understanding messages and slots deeply is essential to mastering Io. They're not just an implementation detail&mdash;they're the conceptual core that makes Io's radical simplicity possible.</p></div></div><div class="page-footer"><a class="next-link" href="../Cloning-and-Inheritance/index.html">Cloning and Inheritance &rarr;</a></div></div>
+<script src="../colvmn/layout/bundle.js" defer></script>
+  <script type="application/json" id="colvmn-prefetch">{"./_index.json":{"ok":false,"status":404},"./_index.md":{"ok":true,"status":200,"content":"---\ntitle: Messages and Slots\ntopTitle: Io\nsubtitle: \"The two mechanisms that drive every computation in Io.\"\nnextSectionLink: true\n---\n\nAt the heart of Io lies a simple but powerful idea: all computation happens through message passing. Objects communicate by sending messages to each other, and objects respond to messages by looking up slots. This chapter explores this fundamental mechanism in depth.\n\n## The Anatomy of a Message\n\nWhen you write this in Io:\n\n```io\nperson setName(\"Alice\")\n```\n\nWhat actually happens? Let's break it down:\n\n1. `person` is the **receiver** - the object receiving the message\n2. `setName` is the **message name** (or selector)\n3. `\"Alice\"` is the **argument** to the message\n4. The entire expression is a **message send**\n\nBut here's where it gets interesting. Messages are objects too:\n\n```io\n// Create a message object\nmsg := message(person setName(\"Alice\"))\n\n// Inspect it\nmsg name println          // setName\nmsg arguments println     // list(Message_0x...)\nmsg arguments first code println  // \"Alice\"\n\n// Execute it\nmsg doInContext(Lobby)    // Actually calls person setName(\"Alice\")\n```\n\n## Slots: The Object's Memory\n\nSlots are named storage locations in objects. They can hold any value:\n\n```io\nobj := Object clone\n\n// Create slots with different values\nobj number := 42                    // Number\nobj text := \"hello\"                 // String\nobj method := method(x, x * 2)      // Method\nobj child := Object clone            // Another object\nobj flag := true                     // Boolean\n\n// List all slots\nobj slotNames println\n// list(number, text, method, child, flag)\n\n// Check for slots\nobj hasSlot(\"number\") println       // true\nobj hasSlot(\"missing\") println      // false\n\n// Get slot values\nobj getSlot(\"number\") println       // 42\nobj getSlot(\"method\") println       // method(x, ...)\n```\n\n## The Message Resolution Algorithm\n\nWhen an object receives a message, Io follows a specific algorithm to find the corresponding slot:\n\n```io\nAnimal := Object clone\nAnimal speak := method(\"generic sound\" println)\n\nDog := Animal clone\nDog speak := method(\"woof\" println)\nDog wagTail := method(\"wagging...\" println)\n\nrover := Dog clone\nrover name := \"Rover\"\n\n// When rover receives 'speak':\nrover speak\n// 1. Look for 'speak' in rover - not found\n// 2. Look for 'speak' in rover's proto (Dog) - found!\n// 3. Execute Dog's speak method with rover as self\n\n// When rover receives 'name':\nrover name\n// 1. Look for 'name' in rover - found!\n// 2. Return the value\n\n// Visual representation:\n/*\n    Object\n      ↑\n    Animal (speak: \"generic sound\")\n      ↑\n     Dog (speak: \"woof\", wagTail)\n      ↑\n    rover (name: \"Rover\")\n*/\n```\n\n## Creating and Modifying Slots\n\nIo distinguishes between creating new slots and updating existing ones:\n\n```io\nobj := Object clone\n\n// Create a new slot with :=\nobj x := 10\nobj hasSlot(\"x\") println         // true\n\n// Update existing slot with =\nobj x = 20\nobj x println                    // 20\n\n// Trying to update non-existent slot fails\nobj y = 30                       // Exception: Slot y not found\n\n// But you can use setSlot to create or update\nobj setSlot(\"y\", 30)            // Creates if doesn't exist\nobj y println                    // 30\n\n// Remove slots\nobj removeSlot(\"y\")\nobj hasSlot(\"y\") println        // false\n```\n\nThis distinction helps catch typos:\n\n```io\ncounter := 0\ncountr = 1    // Error! Probably meant 'counter'\n```\n\n## Methods Are Just Slots\n\nIn Io, methods aren't special—they're just slots that hold executable blocks:\n\n```io\nCalculator := Object clone\n\n// Method is just a slot containing a method object\nCalculator add := method(a, b, a + b)\n\n// You can manipulate methods like any other value\naddMethod := Calculator getSlot(\"add\")\naddMethod type println           // Block\n\n// You can copy methods between objects\nScientificCalc := Object clone\nScientificCalc addition := Calculator getSlot(\"add\")\nScientificCalc addition(5, 3) println  // 8\n\n// You can even store methods in variables\noperation := method(x, x * 2)\nCalculator double := operation\nCalculator double(21) println    // 42\n```\n\n## The 'self' and 'sender' Context\n\nEvery method has access to special variables:\n\n```io\nPrinter := Object clone\nPrinter name := \"HP\"\nPrinter print := method(doc,\n    (\"Printer: \" .. self name) println    // self = receiver\n    (\"Sender: \" .. sender type) println   // sender = who sent the message\n    (\"Document: \" .. doc) println\n)\n\nComputer := Object clone\nComputer sendJob := method(\n    Printer print(\"report.pdf\")\n)\n\nComputer sendJob\n// Printer: HP\n// Sender: Computer\n// Document: report.pdf\n```\n\n## Message Forwarding\n\nWhen an object doesn't have a slot for a received message, it calls `forward`:\n\n```io\nProxy := Object clone\nProxy target := nil\nProxy forward := method(\n    (\"Forwarding \" .. call message name .. \" to target\") println\n    call evalArgAt(0) // This would forward to target\n)\n\np := Proxy clone\np doSomething(\"arg\")\n// Forwarding doSomething to target\n```\n\nThis enables powerful patterns like delegation and method missing:\n\n```io\n// Ruby-style method_missing\nDynamicObject := Object clone\nDynamicObject forward := method(\n    methodName := call message name\n    if(methodName beginsWithSeq(\"get\"),\n        # Handle getters\n        property := methodName afterSeq(\"get\") lowercase\n        self getSlot(property),\n        # Handle setters\n        if(methodName beginsWithSeq(\"set\"),\n            property := methodName afterSeq(\"set\") lowercase\n            value := call evalArgAt(0)\n            self setSlot(property, value)\n        )\n    )\n)\n\nobj := DynamicObject clone\nobj setName(\"Alice\")     // Creates 'name' slot\nobj getName println       // \"Alice\"\n```\n\n## Lazy Evaluation with Messages\n\nMessages don't evaluate immediately—they're data structures you can manipulate:\n\n```io\n// Messages as data\nexpr := message(2 + 3 * 4)\nexpr println             // 2 +(3 *(4))\n\n// Evaluate when ready\nresult := expr doInContext(Lobby)\nresult println           // 14\n\n// Modify messages before evaluation\nexpr := message(x + y)\ncontext := Object clone\ncontext x := 10\ncontext y := 20\nexpr doInContext(context) println  // 30\n```\n\nThis enables macro-like capabilities:\n\n```io\n// Create a timing macro\nObject time := method(\n    code := call argAt(0)  // Get the message, not its value\n    start := Date now\n    result := code doInContext(call sender)\n    elapsed := Date now - start\n    (\"Elapsed: \" .. elapsed) println\n    result\n)\n\n// Use it\ntime(\n    sum := 0\n    for(i, 1, 1000000, sum = sum + i)\n    sum\n)\n// Elapsed: 0.234\n// Returns: 500000500000\n```\n\n## Call Introspection\n\nThe `call` object provides detailed information about the current method invocation:\n\n```io\nObject debug := method(\n    \"=== Call Debug ===\" println\n    (\"Sender: \" .. call sender type) println\n    (\"Target: \" .. call target type) println\n    (\"Message: \" .. call message name) println\n    (\"Args: \" .. call message arguments) println\n    (\"Activated: \" .. call activated type) println\n    \"================\" println\n)\n\nTestObject := Object clone\nTestObject test := method(\n    debug\n)\n\nTestObject test\n// === Call Debug ===\n// Sender: Lobby\n// Target: TestObject\n// Message: debug\n// Args: list()\n// Activated: Block\n// ================\n```\n\n## Operator Messages\n\nOperators are messages with special precedence rules. Unlike many languages where operators are built-in syntax, in Io they're regular messages that follow configurable precedence levels. This means you can treat operators like any other method - you can override them, create new ones, or call them using regular message passing syntax.\n\nThe OperatorTable manages operator precedence, with levels from 0 (highest) to 13 (lowest). Standard arithmetic follows familiar rules: multiplication and division (level 3) bind tighter than addition and subtraction (level 4). Assignment operators like := and = have the lowest precedence (level 13), ensuring they capture everything to their right.\n\n```io\n// These are equivalent\n2 + 3 * 4\n2 +(3 *(4))\n\n// You can see the precedence\nOperatorTable println\n\n// You can add custom operators\nOperatorTable addOperator(\"@@\", 5)\nNumber @@ := method(n,\n    self pow(n) + n pow(self)\n)\n\n2 @@ 3 println  // 17 (2^3 + 3^2 = 8 + 9)\n\n// Operators are just messages\n5 send(\"+\", 3) println  // 8\n\"hello\" send(\"at\", 1) println  // e\n```\n\nThis unified treatment of operators as messages enables powerful metaprogramming techniques. You can intercept arithmetic operations for logging, create domain-specific operators for mathematical or business logic, or even implement operator overloading for custom types - all using the same message passing mechanism that underlies the entire language.\n\n## Assignment Messages\n\nEven assignment is message passing:\n\n```io\n// These are equivalent\nx := 10\nsetSlot(\"x\", 10)\n\n// And these\nx = 20\nupdateSlot(\"x\", 20)\n\n// You can override assignment behavior\nObject setSlot := method(name, value,\n    (\"Setting \" .. name .. \" to \" .. value) println\n    resend  // Call original setSlot\n)\n\ny := 42\n// Setting y to 42\n```\n\n## Method Activation vs. Value Access\n\nIo distinguishes between activatable and non-activatable values:\n\n```io\nobj := Object clone\n\n// Methods are activatable - they run when accessed\nobj greet := method(\"Hello!\" println)\nobj greet  // Prints \"Hello!\"\n\n// Other values are just returned\nobj name := \"Alice\"\nobj name  // Returns \"Alice\"\n\n// You can get a method without activating it\nm := obj getSlot(\"greet\")\nm println  // method(...)\n\n// And activate it later\nm call  // Prints \"Hello!\"\n\n// Check if something is activatable\nobj getSlot(\"greet\") isActivatable println  // true\nobj getSlot(\"name\") isActivatable println   // false\n```\n\n## Building a Message-Based DSL\n\nLet's build a simple HTML DSL using messages:\n\n```io\nHTML := Object clone\nHTML forward := method(\n    tagName := call message name\n    args := call message arguments\n    \n    // Build opening tag\n    result := \"\u003c\" .. tagName\n    \n    // Handle attributes (first arg if it's a Map)\n    if(args size > 0 and args at(0) name == \"curlyBrackets\",\n        attrs := call evalArgAt(0)\n        attrs foreach(key, value,\n            result = result .. \" \" .. key .. \"=\\\"\" .. value .. \"\\\"\"\n        )\n        args removeFirst\n    )\n    \n    result = result .. \">\"\n    \n    // Handle content\n    args foreach(arg,\n        content := call sender doMessage(arg)\n        if(content, result = result .. content)\n    )\n    \n    // Closing tag\n    result = result .. \"\u003c/\" .. tagName .. \">\"\n    result\n)\n\n// Usage\nhtml := HTML clone\n\npage := html div({ \"class\": \"container\" },\n    html h1(\"Welcome\"),\n    html p(\"This is a paragraph\"),\n    html ul(\n        html li(\"Item 1\"),\n        html li(\"Item 2\")\n    )\n)\n\npage println\n// \u003cdiv class=\"container\">\u003ch1>Welcome\u003c/h1>\u003cp>This is a paragraph\u003c/p>\u003cul>\u003cli>Item 1\u003c/li>\u003cli>Item 2\u003c/li>\u003c/ul>\u003c/div>\n```\n\n## Performance Considerations\n\nMessage passing has overhead compared to direct function calls:\n\n```io\n// Traditional method call\nobj := Object clone\nobj directMethod := method(x, x * 2)\n\n// Message construction and sending\nmsg := Message clone setName(\"directMethod\") setArguments(list(Message clone setName(\"5\")))\n\n// Benchmark\ntime(\n    100000 times(obj directMethod(5))\n)\n// 0.015000 seconds\n\ntime(\n    100000 times(obj doMessage(msg))\n)\n// 0.048000 seconds\n\n// Direct calls are ~3x faster, but message objects enable metaprogramming\n```\n\n## Common Patterns\n\nMessage passing and slot manipulation enable elegant implementations of common design patterns. These patterns leverage Io's dynamic nature to create flexible, maintainable code structures that would require significant boilerplate in more static languages.\n\n### Property Access Pattern\n\nThis pattern demonstrates how to dynamically generate getters and setters using message construction. Instead of manually writing accessor methods for each property, we use Io's metaprogramming capabilities to create them on demand. The generated methods follow a naming convention where properties are stored with an underscore prefix internally, while the public interface uses clean method names.\n\n```io\nPerson := Object clone\nPerson init := method(\n    self name := nil\n    self age := nil\n    self\n)\n\n// Generate getters/setters with messages\nPerson addAccessors := method(slotName,\n    // Getter\n    self setSlot(slotName,\n        method(self getSlot(\"_\" .. slotName))\n    )\n\n    // Setter\n    self setSlot(\"set\" .. slotName asCapitalized,\n        method(value, self setSlot(\"_\" .. slotName, value))\n    )\n)\n\nPerson addAccessors(\"name\")\nPerson addAccessors(\"age\")\n\np := Person clone\np setName(\"Alice\")\np name println  // \"Alice\"\n```\n\nThe beauty of this approach is that it scales effortlessly - adding new properties requires just one line of code per property, and the accessor methods are created with consistent behavior and naming. This pattern is particularly useful when building data models or domain objects where property access needs to be controlled or monitored.\n\n### Chain of Responsibility\n\nThe Chain of Responsibility pattern creates a pipeline of handlers where each handler decides whether to process a request or pass it to the next handler. In Io, this pattern is particularly clean because message passing naturally supports delegation. Each handler in the chain examines the request and either processes it or forwards it using simple message passing.\n\n```io\nHandler := Object clone\nHandler next := nil\nHandler handle := method(request,\n    if(self canHandle(request),\n        self process(request),\n        if(next, next handle(request))\n    )\n)\n\nAuthHandler := Handler clone\nAuthHandler canHandle := method(request,\n    request hasSlot(\"needsAuth\")\n)\nAuthHandler process := method(request,\n    \"Authenticating...\" println\n)\n\nLogHandler := Handler clone\nLogHandler canHandle := method(request, true)\nLogHandler process := method(request,\n    (\"Logging: \" .. request type) println\n)\n\n// Build chain\nauth := AuthHandler clone\nlog := LogHandler clone\nauth next := log\n\n// Process requests\nrequest := Object clone\nrequest type := \"GET\"\nrequest needsAuth := true\n\nauth handle(request)\n// Authenticating...\n// Logging: GET\n```\n\nThis pattern is invaluable for building middleware systems, request processors, or event handling pipelines. The chain can be dynamically reconfigured at runtime by simply changing the `next` references, and new handler types can be added without modifying existing code. The pattern also naturally supports optional processing - handlers can choose to stop the chain or allow it to continue based on the request's characteristics.\n\n## Debugging Messages\n\nUnderstanding message flow is crucial for debugging:\n\n```io\nObject trace := method(\n    self setSlot(\"forward\",\n        method(\n            (\"Missing: \" .. call message name) println\n            (\"Arguments: \" .. call message arguments) println\n            (\"Sender: \" .. sender type) println\n        )\n    )\n    self\n)\n\nbuggy := Object clone trace\nbuggy doSomethingWrong(1, 2, 3)\n// Missing: doSomethingWrong\n// Arguments: list(1, 2, 3)\n// Sender: Lobby\n```\n\n## Exercises\n\n1. **Message Logger**: Create a wrapper that logs all messages sent to an object, including arguments and return values.\n\n2. **Lazy Properties**: Implement properties that are only computed when first accessed, then cached.\n\n3. **Message Queue**: Build an object that queues messages and executes them later in order.\n\n4. **Method Decorators**: Create a system for wrapping methods with before/after behavior using messages.\n\n5. **Message Router**: Build a router that directs messages to different handlers based on patterns.\n\n## Advanced Message Techniques\n\n### Message Rewriting\n\n```io\nRewriter := Object clone\nRewriter forward := method(\n    msg := call message\n    \n    // Rewrite add to multiply\n    if(msg name == \"add\",\n        msg setName(\"multiply\")\n    )\n    \n    // Continue with modified message\n    resend\n)\n\ncalc := Rewriter clone\ncalc multiply := method(a, b, a * b)\ncalc add(3, 4) println  // 12 (rewritten to multiply!)\n```\n\n### Conditional Message Sending\n\n```io\nObject sendIf := method(condition, messageName,\n    if(condition,\n        self doMessage(Message clone setName(messageName))\n    )\n)\n\nObject sendUnless := method(condition, messageName,\n    if(condition not,\n        self doMessage(Message clone setName(messageName))\n    )\n)\n\nobj := Object clone\nobj greet := method(\"Hello!\" println)\n\nobj sendIf(true, \"greet\")      // Hello!\nobj sendUnless(false, \"greet\")  // Hello!\n```\n\n## Conclusion\n\nMessages and slots form the foundation of Io's object model. Every computation—from simple arithmetic to complex method calls—is accomplished through message passing. Objects store their state and behavior in slots, and respond to messages by looking up the corresponding slots.\n\nThis uniform model provides incredible flexibility. You can intercept messages, forward them, rewrite them, or queue them. You can introspect the entire message-passing process. You can build DSLs that feel native to the language. And you can debug by tracing the flow of messages through your system.\n\nUnderstanding messages and slots deeply is essential to mastering Io. They're not just an implementation detail—they're the conceptual core that makes Io's radical simplicity possible.\n"},"../_index.json":{"ok":true,"status":200,"content":"{\n  \"title\": \"The Io Programming Language\",\n  \"topTitle\": \"Io\",\n  \"subtitle\": \"A comprehensive guide to prototype-based programming with Io.\",\n  \"content\": [\n    {\n      \"type\": \"ContentText\",\n      \"content\": \"This book provides an in-depth exploration of the Io programming language, designed for experienced programmers who want to understand prototype-based object-oriented programming. Through detailed comparisons with mainstream languages like JavaScript, Python, Ruby, and Java, readers will gain practical insights into Io's unique paradigm.\"\n    },\n    {\n      \"type\": \"ContentCards\",\n      \"title\": \"Chapters\",\n      \"columns\": 2,\n      \"items\": [\n        \"Preface\",\n        \"Introduction\",\n        \"Getting-Started\",\n        \"Everything-is-an-Object\",\n        \"Prototypes-Not-Classes\",\n        \"Messages-and-Slots\",\n        \"Cloning-and-Inheritance\",\n        \"Control-Flow\",\n        \"Collections\",\n        \"Blocks-and-Closures\",\n        \"Exceptions\",\n        \"Metaprogramming\",\n        \"Concurrency\",\n        \"Domain-Specific-Languages\",\n        \"C-Integration\",\n        \"Real-World-Patterns\",\n        \"Case-Studies\",\n        \"Ecosystem-and-Libraries\",\n        \"Conclusion\"\n      ]\n    }\n  ]\n}\n"},"../Cloning-and-Inheritance/_index.json":{"ok":false,"status":404},"../Cloning-and-Inheritance/_index.md":{"ok":true,"status":200,"content":"---\ntitle: Cloning and Inheritance\ntopTitle: Io\nsubtitle: \"How inheritance chains emerge from the simpler operation of cloning.\"\nnextSectionLink: true\n---\n\nIn class-based languages, inheritance is a relationship between classes. In Io's prototype-based world, inheritance emerges from the simpler mechanism of cloning. When you clone an object, the new object maintains a link to its prototype, creating an inheritance chain. This chapter explores how cloning works, how inheritance emerges from it, and how to use these mechanisms effectively.\n\n## The Mechanics of Cloning\n\nWhen you clone an object in Io, you don't copy all its data. Instead, you create a new, empty object with a reference to the original:\n\n```io\n// Create a prototype\nAnimal := Object clone\nAnimal species := \"Unknown\"\nAnimal age := 0\nAnimal describe := method(\n    (\"A \" .. age .. \" year old \" .. species) println\n)\n\n// Clone it\ncat := Animal clone\n\n// cat is empty but linked to Animal\ncat slotNames println        // list() - no local slots!\ncat species println          // \"Unknown\" - from Animal\ncat age println             // 0 - from Animal\n\n// The link is through 'proto'\ncat proto == Animal println  // true\n```\n\nThis is fundamentally different from copying:\n\n```io\n// If cloning was copying (it's not!), it would work like:\ncatCopy := Object clone\ncatCopy species := Animal species  // Copy each slot\ncatCopy age := Animal age\ncatCopy describe := Animal describe\n\n// But cloning actually creates a link:\ncatClone := Animal clone  // Empty object linked to Animal\n```\n\n## Differential Inheritance in Action\n\nObjects only store their differences from their prototypes:\n\n```io\nVehicle := Object clone\nVehicle speed := 60\nVehicle color := \"white\"\nVehicle drive := method(\n    (\"Driving at \" .. speed .. \" mph\") println\n)\n\ncar := Vehicle clone\ncar color = \"red\"  // Override color\ncar model := \"Sedan\"  // Add new slot\n\n// Inspect what's stored where\ncar slotNames println          // list(color, model) - only differences!\nVehicle slotNames println      // list(speed, color, drive)\n\n// But car can access everything\ncar speed println              // 60 - from Vehicle\ncar color println              // \"red\" - from car (overrides Vehicle)\ncar model println              // \"Sedan\" - from car\ncar drive                      // \"Driving at 60 mph\"\n```\n\nMemory efficiency comparison:\n\n```io\n// Creating 1000 cars\ncars := list()\n1000 times(i,\n    car := Vehicle clone\n    car id := i\n    cars append(car)\n)\n\n// Each car only stores its 'id' slot\n// All share Vehicle's methods and default values\n// In a copying system, each would duplicate everything\n```\n\n## The Prototype Chain\n\nObjects can have chains of prototypes:\n\n```io\nOrganism := Object clone\nOrganism alive := true\nOrganism metabolize := method(\"Converting energy...\" println)\n\nAnimal := Organism clone\nAnimal mobile := true\nAnimal move := method(\"Moving...\" println)\n\nMammal := Animal clone\nMammal warmBlooded := true\nMammal nurse := method(\"Nursing young...\" println)\n\nDog := Mammal clone\nDog loyal := true\nDog bark := method(\"Woof!\" println)\n\nfido := Dog clone\nfido name := \"Fido\"\n\n// fido can access methods from the entire chain\nfido metabolize  // From Organism\nfido move        // From Animal\nfido nurse       // From Mammal\nfido bark        // From Dog\n\n// Trace the chain\nobj := fido\nwhile(obj != Object,\n    obj type println\n    obj = obj proto\n)\n// Dog\n// Mammal\n// Animal\n// Organism\n// Object\n```\n\n## Method Resolution Order\n\nWhen you send a message, Io searches up the prototype chain:\n\n```io\nA := Object clone\nA foo := method(\"A's foo\" println)\nA bar := method(\"A's bar\" println)\n\nB := A clone\nB foo := method(\"B's foo\" println)  // Override\n\nC := B clone\nC bar := method(\"C's bar\" println)  // Override different method\n\nobj := C clone\n\nobj foo  // \"B's foo\" - found in B (C doesn't have it)\nobj bar  // \"C's bar\" - found in C\nobj baz  // Exception - not found anywhere\n```\n\nYou can visualize the search:\n\n```io\nObject findSlot := method(slotName,\n    obj := self\n    while(obj,\n        if(obj hasLocalSlot(slotName),\n            (\"Found '\" .. slotName .. \"' in \" .. obj type) println\n            return obj getSlot(slotName)\n        )\n        obj = obj proto\n    )\n    \"Not found\" println\n)\n\nobj findSlot(\"foo\")  // Found 'foo' in B\nobj findSlot(\"bar\")  // Found 'bar' in C\n```\n\n## Multiple Inheritance\n\nIo supports multiple inheritance through the `protos` list:\n\n```io\n// Define capabilities\nFlyable := Object clone\nFlyable altitude := 0\nFlyable fly := method(height,\n    altitude = height\n    (\"Flying at \" .. altitude .. \" feet\") println\n)\n\nSwimmable := Object clone\nSwimmable depth := 0\nSwimmable swim := method(d,\n    depth = d\n    (\"Swimming at \" .. depth .. \" feet deep\") println\n)\n\n// Single inheritance\nBird := Flyable clone\nBird chirp := method(\"Chirp!\" println)\n\n// Multiple inheritance\nDuck := Object clone\nDuck appendProto(Flyable)\nDuck appendProto(Swimmable)\nDuck quack := method(\"Quack!\" println)\n\nmallard := Duck clone\nmallard fly(100)    // Flying at 100 feet\nmallard swim(5)     // Swimming at 5 feet deep\nmallard quack       // Quack!\n\n// Check the prototype list\nDuck protos println  // list(Object_0x..., Flyable_0x..., Swimmable_0x...)\n```\n\n## Diamond Problem Resolution\n\nThe diamond problem occurs when multiple inheritance paths lead to the same ancestor:\n\n```io\n// Diamond structure\nGrandparent := Object clone\nGrandparent value := \"from grandparent\"\nGrandparent method1 := method(\"Grandparent method1\" println)\n\nParent1 := Grandparent clone\nParent1 method1 := method(\"Parent1 method1\" println)\nParent1 method2 := method(\"Parent1 method2\" println)\n\nParent2 := Grandparent clone\nParent2 method1 := method(\"Parent2 method1\" println)\nParent2 method3 := method(\"Parent2 method3\" println)\n\nChild := Object clone\nChild appendProto(Parent1)\nChild appendProto(Parent2)\n\n// Resolution order matters\nChild method1  // \"Parent1 method1\" - Parent1 comes first\n\n// Reorder to change priority\nChild protos := list(Parent2, Parent1)\nChild method1  // \"Parent2 method1\" - Parent2 now comes first\n```\n\n## Shallow vs Deep Cloning\n\nBy default, cloning is shallow—slot values are shared:\n\n```io\nOriginal := Object clone\nOriginal data := list(1, 2, 3)\nOriginal info := Map clone atPut(\"key\", \"value\")\n\nShallow := Original clone\n\n// Modifying mutable objects affects both\nShallow data append(4)\nOriginal data println  // list(1, 2, 3, 4) - changed!\n\n// Need deep cloning for independence\nObject deepClone := method(\n    new := self clone\n    self slotNames foreach(name,\n        value := self getSlot(name)\n        if(value hasSlot(\"clone\"),\n            new setSlot(name, value clone)\n        )\n    )\n    new\n)\n\nDeep := Original deepClone\nDeep data append(5)\nOriginal data println  // list(1, 2, 3, 4) - unchanged\nDeep data println      // list(1, 2, 3, 4, 5)\n```\n\n## init Methods and Constructors\n\nWhile Io doesn't have constructors, you can create initialization patterns:\n\n```io\nPerson := Object clone\nPerson init := method(\n    self name := \"Unknown\"\n    self age := 0\n    self contacts := list()  // Important: new list for each instance\n    self  // Return self for chaining\n)\n\n// Override clone to call init\nPerson clone := method(\n    resend init\n)\n\n// Now each person gets their own contacts list\nalice := Person clone\nalice name = \"Alice\"\nalice contacts append(\"Bob\")\n\nbob := Person clone\nbob name = \"Bob\"\nbob contacts append(\"Charlie\")\n\nalice contacts println  // list(\"Bob\") - independent!\nbob contacts println    // list(\"Charlie\")\n```\n\n## Factory Methods\n\nCreate specialized cloning methods:\n\n```io\nAnimal := Object clone\nAnimal species := \"Unknown\"\nAnimal sound := \"...\"\n\nAnimal withSpecies := method(s,\n    new := self clone\n    new species = s\n    new\n)\n\nAnimal dog := method(\n    self clone species = \"Dog\" sound = \"Woof\"\n)\n\nAnimal cat := method(\n    self clone species = \"Cat\" sound = \"Meow\"\n)\n\n// Usage\nmyDog := Animal dog\nmyCat := Animal cat\ngenericAnimal := Animal withSpecies(\"Elephant\")\n```\n\n## Prototype Switching\n\nUnlike class-based languages, you can change an object's prototype at runtime:\n\n```io\n// Start with one prototype\nBird := Object clone\nBird fly := method(\"Flying...\" println)\n\nFish := Object clone\nFish swim := method(\"Swimming...\" println)\n\ncreature := Bird clone\ncreature fly  // \"Flying...\"\n\n// Change its prototype!\ncreature protos = list(Fish)\ncreature swim  // \"Swimming...\"\ncreature fly   // Exception - no longer a Bird!\n\n// Or add capabilities\ncreature appendProto(Bird)\ncreature fly   // \"Flying...\" - now it can do both\ncreature swim  // \"Swimming...\"\n```\n\n## Mixins and Traits\n\nUse prototypes as mixins for composable behavior:\n\n```io\n// Define mixins\nComparable := Object clone\nComparable \u003c := method(other, self compare(other) \u003c 0)\nComparable > := method(other, self compare(other) > 0)\nComparable == := method(other, self compare(other) == 0)\nComparable \u003c= := method(other, self compare(other) \u003c= 0)\nComparable >= := method(other, self compare(other) >= 0)\n\nEnumerable := Object clone\nEnumerable select := method(block,\n    result := list()\n    self foreach(item,\n        if(block call(item), result append(item))\n    )\n    result\n)\nEnumerable map := method(block,\n    result := list()\n    self foreach(item,\n        result append(block call(item))\n    )\n    result\n)\n\n// Use mixins\nSortedList := List clone\nSortedList appendProto(Comparable)\nSortedList appendProto(Enumerable)\nSortedList compare := method(other,\n    self size compare(other size)\n)\n\nlist1 := SortedList clone append(1, 2, 3)\nlist2 := SortedList clone append(4, 5)\n(list1 > list2) println  // true (3 > 2)\n```\n\n## Clone Hooks\n\nCustomize cloning behavior:\n\n```io\nCounted := Object clone\nCounted instances := 0\n\nCounted clone := method(\n    Counted instances = Counted instances + 1\n    new := resend\n    new id := Counted instances\n    new\n)\n\n// Each clone gets a unique ID\nobj1 := Counted clone\nobj2 := Counted clone\nobj3 := Counted clone\n\nobj1 id println  // 1\nobj2 id println  // 2\nobj3 id println  // 3\nCounted instances println  // 3\n```\n\n## Inheritance Patterns\n\n### Classical Inheritance Pattern\n\nEmulate class-based inheritance:\n\n```io\n// Base \"class\"\nClass := Object clone\nClass new := method(\n    instance := self clone\n    instance init\n    instance\n)\n\n// Define a \"class\"\nRectangle := Class clone\nRectangle init := method(\n    self width := 0\n    self height := 0\n)\nRectangle area := method(width * height)\n\n// Inheritance\nSquare := Rectangle clone\nSquare init := method(\n    resend  // Call parent init\n    self side := 0\n)\nSquare setSide := method(s,\n    side = s\n    width = s\n    height = s\n)\n\n// Usage\nrect := Rectangle new\nrect width = 10\nrect height = 20\nrect area println  // 200\n\nsquare := Square new\nsquare setSide(5)\nsquare area println  // 25\n```\n\n### Delegation Pattern\n\n```io\nDelegator := Object clone\nDelegator delegate := nil\nDelegator forward := method(\n    if(delegate,\n        delegate doMessage(call message, call sender)\n    ,\n        Exception raise(\"No delegate set\")\n    )\n)\n\nLogger := Object clone\nLogger log := method(msg, (\"[LOG] \" .. msg) println)\n\nobj := Delegator clone\nobj delegate = Logger\nobj log(\"Hello\")  // [LOG] Hello\n```\n\n## Testing Inheritance\n\nCheck inheritance relationships:\n\n```io\nObject isKindOf := method(proto,\n    obj := self\n    while(obj,\n        if(obj == proto, return true)\n        if(obj protos,\n            obj protos foreach(p,\n                if(p isKindOf(proto), return true)\n            )\n        )\n        obj = obj proto\n    )\n    false\n)\n\nAnimal := Object clone\nDog := Animal clone\nfido := Dog clone\n\nfido isKindOf(Dog) println     // true\nfido isKindOf(Animal) println  // true\nfido isKindOf(Object) println  // true\nfido isKindOf(Number) println  // false\n```\n\n## Performance Considerations\n\nPrototype chains affect performance:\n\n```io\n// Deep chain - slower lookup\nA := Object clone\nB := A clone\nC := B clone\nD := C clone\nE := D clone\nobj := E clone\nobj method := method(\"Found!\")\n\n// Shallow chain - faster lookup\nFlat := Object clone\nFlat method := method(\"Found!\")\nobj2 := Flat clone\n\n// Benchmark\ntime(100000 times(obj method))   // Slower\ntime(100000 times(obj2 method))  // Faster\n```\n\n## Common Pitfalls\n\n### Shared Mutable State\n\n```io\n// WRONG - shares list between instances\nBadTemplate := Object clone\nBadTemplate items := list()\n\nobj1 := BadTemplate clone\nobj2 := BadTemplate clone\nobj1 items append(1)\nobj2 items println  // list(1) - Oops! Shared!\n\n// RIGHT - create new list for each instance\nGoodTemplate := Object clone\nGoodTemplate init := method(\n    self items := list()\n    self\n)\nGoodTemplate clone := method(resend init)\n```\n\n### Circular Prototypes\n\n```io\n// Don't do this!\nA := Object clone\nB := Object clone\nA appendProto(B)\nB appendProto(A)  // Circular!\n\n// A foo  // Infinite loop!\n```\n\n## Exercises\n\n1. **Instance Counter**: Create a prototype that tracks how many objects have been cloned from it, directly or indirectly.\n\n2. **Prototype Inspector**: Write a method that visualizes an object's complete prototype hierarchy as a tree.\n\n3. **Deep Clone**: Implement a robust deep cloning method that handles circular references.\n\n4. **Multiple Inheritance Resolver**: Create a system that detects and reports conflicts in multiple inheritance.\n\n5. **Class Emulator**: Build a complete class-based OOP system on top of Io's prototypes, including abstract classes and interfaces.\n\n## Real-World Example: Game Entity System\n\n```io\n// Base entity\nEntity := Object clone\nEntity init := method(\n    self x := 0\n    self y := 0\n    self health := 100\n    self\n)\nEntity clone := method(resend init)\nEntity takeDamage := method(amount,\n    health = health - amount\n    if(health \u003c= 0, self die)\n)\nEntity die := method(\"Entity died\" println)\n\n// Moveable capability\nMoveable := Object clone\nMoveable speed := 1\nMoveable moveTo := method(newX, newY,\n    x = newX\n    y = newY\n)\n\n// Attacker capability\nAttacker := Object clone\nAttacker damage := 10\nAttacker attack := method(target,\n    target takeDamage(damage)\n)\n\n// Compose entities\nPlayer := Entity clone\nPlayer appendProto(Moveable)\nPlayer appendProto(Attacker)\nPlayer speed = 5\nPlayer damage = 20\n\nEnemy := Entity clone\nEnemy appendProto(Moveable)\nEnemy appendProto(Attacker)\nEnemy speed = 3\nEnemy damage = 15\n\n// Static entity\nTurret := Entity clone\nTurret appendProto(Attacker)\nTurret damage = 25\n\n// Usage\nplayer := Player clone\nenemy := Enemy clone\nturret := Turret clone\n\nplayer moveTo(10, 10)\nplayer attack(enemy)\nturret attack(player)\n```\n\n## Conclusion\n\nCloning and inheritance in Io demonstrate how complex behavior can emerge from simple mechanisms. Instead of classes, instances, and inheritance hierarchies defined at compile time, you have objects cloning objects, maintaining prototype links, and delegating message handling up the chain.\n\nThis flexibility enables patterns impossible in class-based languages: changing inheritance at runtime, mixing in capabilities dynamically, and treating \"classes\" as first-class objects that can be modified like any other. The trade-off is that you must be more careful about shared state and initialization, but the power and expressiveness gained often make it worthwhile.\n\nUnderstanding cloning and inheritance deeply is essential for effective Io programming. These mechanisms aren't just how you create objects—they're how you structure entire programs.\n"}}</script>
+</body>
+</html>

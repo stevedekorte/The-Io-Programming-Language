@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="stylesheet" href="../colvmn/style.css">
+<title>Control Flow – Io</title>
+  <link rel="alternate" type="text/plain" title="llms.txt" href="/llms.txt">
+  <meta name="description" content="if, while, for, and friends are just methods—and you can write your own.">
+</head>
+<body>
+<div class="page loaded"><div class="header"><div><h1>Control Flow</h1><a class="back-link" href="../index.html">&larr; The Io Programming Language</a></div><a class="brand" href="../index.html">Io</a></div><p class="intro">if, while, for, and friends are just methods—and you can write your own.</p><nav class="toc"><ul><li><a href="#everything-is-a-message">Everything Is a Message</a></li><li><a href="#the-if-method">The if Method</a></li><li><a href="#understanding-blocks">Understanding Blocks</a></li><li><a href="#the-while-loop">The while Loop</a></li><li><a href="#the-for-loop">The for Loop</a></li><li><a href="#the-loop-method">The loop Method</a></li><li><a href="#break-and-continue">break and continue</a></li><li><a href="#the-repeat-method">The repeat Method</a></li><li><a href="#creating-custom-control-structures">Creating Custom Control Structures</a></li><li><a href="#the-elseif-pattern">The elseif Pattern</a></li><li><a href="#switch-like-behavior">Switch-like Behavior</a></li><li><a href="#pattern-matching">Pattern Matching</a></li><li><a href="#iterating-over-collections">Iterating Over Collections</a></li><li><a href="#functional-control-flow">Functional Control Flow</a></li><li><a href="#lazy-evaluation-control">Lazy Evaluation Control</a></li><li><a href="#exception-handling-as-control-flow">Exception Handling as Control Flow</a></li><li><a href="#performance-considerations">Performance Considerations</a></li><li><a href="#advanced-coroutine-based-control">Advanced: Coroutine-based Control</a></li><li><a href="#common-patterns">Common Patterns</a></li><li><a href="#debugging-control-flow">Debugging Control Flow</a></li><li><a href="#exercises">Exercises</a></li><li><a href="#real-world-example-retry-with-backoff">Real-World Example: Retry with Backoff</a></li><li><a href="#conclusion">Conclusion</a></li></ul></nav><div class="section"><div class="section-body"><p>In most programming languages, control flow structures like <code>if</code>, <code>while</code>, and <code>for</code> are built-in syntax with special rules. In Io, they're just methods that receive messages. This chapter explores how Io's message-passing philosophy extends to control flow, and how you can create your own control structures.</p></div></div><h2 id="everything-is-a-message">Everything Is a Message</h2><div class="section"><div class="section-body"><p>Let's start with a simple comparison. In C or Java:</p><pre><code>if (x &gt; 5) {
+    printf("Big\n");
+} else {
+    printf("Small\n");
+}</code></pre><p>This is special syntax that the compiler understands. But in Io:</p><pre><code>if(x &gt; 5,
+    "Big" println,
+    "Small" println
+)</code></pre><p>The <code>if</code> is just a method call! You can even see its implementation:</p><pre><code>if println
+// method(...)
+
+// You could redefine it (don't actually do this!)
+Object if := method(condition, trueBlock, falseBlock,
+    "Making a decision!" println
+    resend  // Call original if
+)</code></pre></div></div><h2 id="the-if-method">The if Method</h2><div class="section"><div class="section-body"><p>The <code>if</code> method takes two or three arguments:</p><pre><code>// Two arguments: if-then
+if(temperature &gt; 30,
+    "It's hot!" println
+)
+
+// Three arguments: if-then-else
+if(temperature &gt; 30,
+    "It's hot!" println,
+    "It's nice!" println
+)
+
+// if returns the value of the executed block
+result := if(5 &gt; 3, "yes", "no")
+result println  // "yes"
+
+// Nested if
+category := if(score &gt; 90, "A",
+    if(score &gt; 80, "B",
+        if(score &gt; 70, "C", "F")
+    )
+)</code></pre></div></div><h2 id="understanding-blocks">Understanding Blocks</h2><div class="section"><div class="section-body"><p>The key to Io's control flow is that code blocks are objects that aren't evaluated immediately:</p><pre><code>// This prints immediately
+"Hello" println
+
+// This creates a block object but doesn't execute it
+block := method("Hello" println)
+
+// Execute it later
+block call  // Now it prints "Hello"
+
+// Blocks in if
+if(true,
+    "This is a block" println  // Not executed until if decides to
+)</code></pre><p>This lazy evaluation is crucial. If both branches of an <code>if</code> were evaluated immediately, both would execute!</p><pre><code>// In a hypothetical eager language:
+eagerIf := method(condition, trueValue, falseValue,
+    if(condition, trueValue, falseValue)
+)
+
+x := 5
+eagerIf(x &gt; 3,
+    "Greater" println,  // This executes immediately
+    "Lesser" println    // This also executes immediately!
+)
+// Would print both!
+
+// But Io's if receives unevaluated blocks
+if(x &gt; 3,
+    "Greater" println,  // Only this executes
+    "Lesser" println    // This never executes
+)</code></pre></div></div><h2 id="the-while-loop">The while Loop</h2><div class="section"><div class="section-body"><p>The <code>while</code> method repeatedly evaluates its condition and body:</p><pre><code>i := 0
+while(i &lt; 5,
+    i println
+    i = i + 1
+)
+// Prints 0, 1, 2, 3, 4
+
+// while returns nil by default
+result := while(false, "Never runs")
+result println  // nil
+
+// Infinite loops
+while(true,
+    input := File standardInput readLine
+    if(input == "quit", break)
+    ("You said: " .. input) println
+)</code></pre></div></div><h2 id="the-for-loop">The for Loop</h2><div class="section"><div class="section-body"><p>The <code>for</code> method provides a counting loop:</p><pre><code>// Basic for loop
+for(i, 1, 5,
+    i println
+)
+// Prints 1, 2, 3, 4, 5
+
+// With step
+for(i, 0, 10, 2,
+    i println
+)
+// Prints 0, 2, 4, 6, 8, 10
+
+// Backward
+for(i, 5, 1,
+    i println
+)
+// Prints 5, 4, 3, 2, 1
+
+// for can return values
+sum := 0
+for(i, 1, 100,
+    sum = sum + i
+)
+sum println  // 5050</code></pre></div></div><h2 id="the-loop-method">The loop Method</h2><div class="section"><div class="section-body"><p>Io provides a <code>loop</code> method for infinite loops:</p><pre><code>count := 0
+loop(
+    count = count + 1
+    if(count &gt; 10, break)
+    count println
+)
+
+// Equivalent to while(true, ...)</code></pre></div></div><h2 id="break-and-continue">break and continue</h2><div class="section"><div class="section-body"><p>These work like in other languages, but they're methods too:</p><pre><code>// break exits the loop
+for(i, 1, 10,
+    if(i == 5, break)
+    i println
+)
+// Prints 1, 2, 3, 4
+
+// continue skips to next iteration
+for(i, 1, 10,
+    if(i % 2 == 0, continue)
+    i println
+)
+// Prints 1, 3, 5, 7, 9
+
+// break can return a value
+result := for(i, 1, 100,
+    if(i * i &gt; 50, break(i))
+)
+result println  // 8 (first i where i*i &gt; 50)</code></pre></div></div><h2 id="the-repeat-method">The repeat Method</h2><div class="section"><div class="section-body"><p>A simpler counting mechanism:</p><pre><code>5 repeat("Hello" println)
+// Prints "Hello" 5 times
+
+// repeat with index
+5 repeat(i, 
+    ("Count: " .. i) println
+)
+// Count: 0
+// Count: 1
+// Count: 2
+// Count: 3
+// Count: 4</code></pre></div></div><h2 id="creating-custom-control-structures">Creating Custom Control Structures</h2><div class="section"><div class="section-body"><p>Since control structures are just methods, you can create your own:</p><pre><code>// unless: opposite of if
+Object unless := method(condition, falseBlock,
+    if(condition not, falseBlock call)
+)
+
+unless(5 &gt; 10,
+    "5 is not greater than 10" println
+)
+
+// until: opposite of while
+Object until := method(condition, body,
+    while(condition not, body)
+)
+
+x := 0
+until(x &gt; 5,
+    x println
+    x = x + 1
+)
+
+// times: repeat n times with cleaner syntax
+Number times := method(body,
+    for(i, 1, self, body)
+)
+
+3 times("Hello" println)</code></pre></div></div><h2 id="the-elseif-pattern">The elseif Pattern</h2><div class="section"><div class="section-body"><p>Io uses <code>elseif</code> for chained conditionals:</p><pre><code>score := 85
+
+if(score &gt;= 90) then(
+    "A" println
+) elseif(score &gt;= 80) then(
+    "B" println
+) elseif(score &gt;= 70) then(
+    "C" println
+) else(
+    "F" println
+)
+// Prints "B"
+
+// This is actually a chain of methods
+// if returns a special object when false
+// that object has elseif and else methods</code></pre></div></div><h2 id="switch-like-behavior">Switch-like Behavior</h2><div class="section"><div class="section-body"><p>Io doesn't have a switch statement, but you can build one:</p><pre><code>Object switch := method(value,
+    self switchValue := value
+    self
+)
+
+Object case := method(testValue, action,
+    if(switchValue == testValue,
+        action call
+        self switchMatched := true
+    )
+    self
+)
+
+Object default := method(action,
+    if(hasSlot("switchMatched") not,
+        action call
+    )
+    self
+)
+
+// Usage
+day := "Tuesday"
+
+switch(day) case("Monday", 
+    "Start of the week" println
+) case("Tuesday",
+    "Second day" println
+) case("Friday",
+    "TGIF!" println
+) default(
+    "Regular day" println
+)
+// Prints "Second day"</code></pre></div></div><h2 id="pattern-matching">Pattern Matching</h2><div class="section"><div class="section-body"><p>Build more sophisticated matching:</p><pre><code>Object match := method(
+    self matchValue := call evalArgAt(0)
+    self matchContext := call sender
+    self
+)
+
+Object when := method(pattern, action,
+    if(hasSlot("matchFound") not,
+        matched := false
+        
+        // Check different pattern types
+        if(pattern type == "Block",
+            matched = pattern call(matchValue),
+            matched = (pattern == matchValue)
+        )
+        
+        if(matched,
+            self matchResult := action call(matchValue)
+            self matchFound := true
+        )
+    )
+    self
+)
+
+Object otherwise := method(action,
+    if(hasSlot("matchFound") not,
+        self matchResult := action call(matchValue)
+    )
+    matchResult
+)
+
+// Usage
+result := match(x) when(
+    block(v, v &lt; 0), 
+    method(v, "negative")
+) when(
+    0,
+    method(v, "zero")
+) when(
+    block(v, v &gt; 0),
+    method(v, "positive")
+) otherwise(
+    method(v, "unknown")
+)</code></pre></div></div><h2 id="iterating-over-collections">Iterating Over Collections</h2><div class="section"><div class="section-body"><p>Collections have their own iteration methods:</p><pre><code>// List iteration
+list(1, 2, 3) foreach(item,
+    item println
+)
+
+// With index
+list("a", "b", "c") foreach(i, item,
+    (i .. ": " .. item) println
+)
+// 0: a
+// 1: b
+// 2: c
+
+// Map iteration
+map := Map clone
+map atPut("name", "Alice")
+map atPut("age", 30)
+
+map foreach(key, value,
+    (key .. " = " .. value) println
+)
+// name = Alice
+// age = 30</code></pre></div></div><h2 id="functional-control-flow">Functional Control Flow</h2><div class="section"><div class="section-body"><p>Io supports functional programming patterns:</p><pre><code>// map: transform each element
+squares := list(1, 2, 3, 4) map(x, x * x)
+squares println  // list(1, 4, 9, 16)
+
+// select: filter elements
+evens := list(1, 2, 3, 4, 5, 6) select(x, x % 2 == 0)
+evens println  // list(2, 4, 6)
+
+// detect: find first matching element
+first_big := list(1, 3, 5, 7, 9) detect(x, x &gt; 5)
+first_big println  // 7
+
+// reduce: aggregate elements
+sum := list(1, 2, 3, 4, 5) reduce(+)
+sum println  // 15
+
+product := list(1, 2, 3, 4) reduce(a, b, a * b)
+product println  // 24</code></pre></div></div><h2 id="lazy-evaluation-control">Lazy Evaluation Control</h2><div class="section"><div class="section-body"><p>Create control structures with lazy evaluation:</p><pre><code>Object lazyIf := method(
+    condition := call argAt(0)
+    trueBlock := call argAt(1)
+    falseBlock := call argAt(2)
+    
+    if(condition doInContext(call sender),
+        trueBlock doInContext(call sender),
+        if(falseBlock,
+            falseBlock doInContext(call sender)
+        )
+    )
+)
+
+// Both condition and blocks are lazy
+x := 5
+lazyIf(x &gt; 3 and computeExpensive(),
+    "True branch" println,
+    "False branch" println
+)</code></pre></div></div><h2 id="exception-handling-as-control-flow">Exception Handling as Control Flow</h2><div class="section"><div class="section-body"><p>Io's <code>try</code> is also a control flow method:</p><pre><code>try(
+    // Code that might fail
+    riskyOperation()
+) catch(Exception,
+    "An error occurred" println
+)
+
+// try-catch-finally pattern
+result := try(
+    file := File with("data.txt") openForReading
+    file contents
+) catch(Exception, e,
+    ("Error: " .. e message) println
+    nil
+) finally(
+    if(file, file close)
+)</code></pre></div></div><h2 id="performance-considerations">Performance Considerations</h2><div class="section"><div class="section-body"><p>Since control structures are methods, they have overhead:</p><pre><code>// Method-based loop (slower)
+i := 0
+while(i &lt; 1000000,
+    i = i + 1
+)
+
+// But you can't really avoid it in Io
+// The language is optimized for expressiveness over speed</code></pre></div></div><h2 id="advanced-coroutine-based-control">Advanced: Coroutine-based Control</h2><div class="section"><div class="section-body"><p>Io's coroutines enable advanced control flow:</p><pre><code>// Generator pattern
+Generator := Object clone
+Generator init := method(
+    self coro := Coroutine currentCoroutine
+    self
+)
+
+Generator yield := method(value,
+    coro pause(value)
+)
+
+Generator fibonacci := method(
+    a := 0
+    b := 1
+    loop(
+        yield(a)
+        temp := a + b
+        a = b
+        b = temp
+    )
+)
+
+// Usage
+gen := Generator clone
+fib := gen @fibonacci  // @ runs in new coroutine
+
+10 repeat(
+    fib resume println
+)
+// 0, 1, 1, 2, 3, 5, 8, 13, 21, 34</code></pre></div></div><h2 id="common-patterns">Common Patterns</h2><div class="section"><div class="section-body"><h3 id="early-return-pattern">Early Return Pattern</h3><pre><code>Object findFirst := method(list, condition,
+    list foreach(item,
+        if(condition call(item),
+            return item
+        )
+    )
+    nil
+)
+
+result := findFirst(list(1, 2, 3, 4, 5), 
+    block(x, x &gt; 3)
+)
+result println  // 4</code></pre><h3 id="guard-clause-pattern">Guard Clause Pattern</h3><pre><code>processData := method(data,
+    if(data isNil, return "No data")
+    if(data size == 0, return "Empty data")
+    if(data size &gt; 1000, return "Too much data")
+    
+    // Process data
+    "Processed" return
+)</code></pre><h3 id="loop-with-state">Loop with State</h3><pre><code>Object loopWithState := method(initial, condition, update, body,
+    state := initial
+    while(condition call(state),
+        body call(state)
+        state = update call(state)
+    )
+    state
+)
+
+// Sum squares until sum &gt; 100
+result := loopWithState(
+    list(0, 1),  // [sum, n]
+    block(state, state at(0) &lt;= 100),
+    block(state, list(state at(0) + state at(1) squared, state at(1) + 1)),
+    block(state, ("n=" .. state at(1) .. " sum=" .. state at(0)) println)
+)</code></pre></div></div><h2 id="debugging-control-flow">Debugging Control Flow</h2><div class="section"><div class="section-body"><pre><code>Object trace := method(label,
+    (label .. " - evaluating") println
+    self
+)
+
+Object debugIf := method(condition, trueBlock, falseBlock,
+    "Evaluating condition..." println
+    result := condition
+    ("Condition is: " .. result) println
+    
+    if(result,
+        "Taking true branch" println
+        trueBlock,
+        "Taking false branch" println
+        falseBlock
+    )
+)
+
+x := 5
+debugIf(x trace("x") &gt; trace("3") 3,
+    "Greater" println,
+    "Lesser" println
+)</code></pre></div></div><h2 id="exercises">Exercises</h2><div class="section"><div class="section-body"><ol><li><strong>do-while Loop</strong>: Implement a <code>doWhile</code> method that executes the body at least once.</li><li><strong>for-each with Break</strong>: Create a <code>forEachBreakable</code> that allows breaking with a return value.</li><li><strong>Retry Logic</strong>: Build a <code>retry</code> control structure that retries an operation n times on failure.</li><li><strong>Parallel If</strong>: Create a <code>parallelIf</code> that evaluates both branches concurrently and returns the first to complete.</li><li><strong>State Machine</strong>: Implement a state machine DSL using custom control structures.</li></ol></div></div><h2 id="real-world-example-retry-with-backoff">Real-World Example: Retry with Backoff</h2><div class="section"><div class="section-body"><pre><code>Object retryWithBackoff := method(maxAttempts, baseDelay, operation,
+    attempt := 1
+    lastError := nil
+    
+    while(attempt &lt;= maxAttempts,
+        try(
+            return operation call(attempt)
+        ) catch(Exception, e,
+            lastError = e
+            if(attempt &lt; maxAttempts,
+                delay := baseDelay * (2 pow(attempt - 1))
+                ("Attempt " .. attempt .. " failed, waiting " .. delay .. "ms") println
+                System sleep(delay / 1000)
+            )
+        )
+        attempt = attempt + 1
+    )
+    
+    Exception raise("Failed after " .. maxAttempts .. " attempts: " .. lastError message)
+)
+
+// Usage
+result := retryWithBackoff(3, 100,
+    block(attempt,
+        ("Trying attempt " .. attempt) println
+        if(Random value &lt; 0.7,
+            Exception raise("Random failure"),
+            "Success!"
+        )
+    )
+)</code></pre></div></div><h2 id="conclusion">Conclusion</h2><div class="section"><div class="section-body"><p>Io's approach to control flow&mdash;implementing everything as methods rather than special syntax&mdash;is both radical and elegant. It demonstrates the power of Io's uniform message-passing model: when everything is a message, even fundamental programming constructs become malleable and extensible.</p><p>This flexibility allows you to:</p><ul><li>Create domain-specific control structures</li><li>Implement new programming paradigms</li><li>Debug and trace control flow</li><li>Understand exactly how your program executes</li></ul><p>The cost is performance and perhaps initial unfamiliarity. But the benefit is a deep understanding of control flow and the ability to shape the language to your needs rather than being constrained by built-in constructs.</p></div></div><div class="page-footer"><a class="next-link" href="../Collections/index.html">Collections &rarr;</a></div></div>
+<script src="../colvmn/layout/bundle.js" defer></script>
+  <script type="application/json" id="colvmn-prefetch">{"./_index.json":{"ok":false,"status":404},"./_index.md":{"ok":true,"status":200,"content":"---\ntitle: Control Flow\ntopTitle: Io\nsubtitle: \"if, while, for, and friends are just methods—and you can write your own.\"\nnextSectionLink: true\n---\n\nIn most programming languages, control flow structures like `if`, `while`, and `for` are built-in syntax with special rules. In Io, they're just methods that receive messages. This chapter explores how Io's message-passing philosophy extends to control flow, and how you can create your own control structures.\n\n## Everything Is a Message\n\nLet's start with a simple comparison. In C or Java:\n\n```c\nif (x > 5) {\n    printf(\"Big\\n\");\n} else {\n    printf(\"Small\\n\");\n}\n```\n\nThis is special syntax that the compiler understands. But in Io:\n\n```io\nif(x > 5,\n    \"Big\" println,\n    \"Small\" println\n)\n```\n\nThe `if` is just a method call! You can even see its implementation:\n\n```io\nif println\n// method(...)\n\n// You could redefine it (don't actually do this!)\nObject if := method(condition, trueBlock, falseBlock,\n    \"Making a decision!\" println\n    resend  // Call original if\n)\n```\n\n## The if Method\n\nThe `if` method takes two or three arguments:\n\n```io\n// Two arguments: if-then\nif(temperature > 30,\n    \"It's hot!\" println\n)\n\n// Three arguments: if-then-else\nif(temperature > 30,\n    \"It's hot!\" println,\n    \"It's nice!\" println\n)\n\n// if returns the value of the executed block\nresult := if(5 > 3, \"yes\", \"no\")\nresult println  // \"yes\"\n\n// Nested if\ncategory := if(score > 90, \"A\",\n    if(score > 80, \"B\",\n        if(score > 70, \"C\", \"F\")\n    )\n)\n```\n\n## Understanding Blocks\n\nThe key to Io's control flow is that code blocks are objects that aren't evaluated immediately:\n\n```io\n// This prints immediately\n\"Hello\" println\n\n// This creates a block object but doesn't execute it\nblock := method(\"Hello\" println)\n\n// Execute it later\nblock call  // Now it prints \"Hello\"\n\n// Blocks in if\nif(true,\n    \"This is a block\" println  // Not executed until if decides to\n)\n```\n\nThis lazy evaluation is crucial. If both branches of an `if` were evaluated immediately, both would execute!\n\n```io\n// In a hypothetical eager language:\neagerIf := method(condition, trueValue, falseValue,\n    if(condition, trueValue, falseValue)\n)\n\nx := 5\neagerIf(x > 3,\n    \"Greater\" println,  // This executes immediately\n    \"Lesser\" println    // This also executes immediately!\n)\n// Would print both!\n\n// But Io's if receives unevaluated blocks\nif(x > 3,\n    \"Greater\" println,  // Only this executes\n    \"Lesser\" println    // This never executes\n)\n```\n\n## The while Loop\n\nThe `while` method repeatedly evaluates its condition and body:\n\n```io\ni := 0\nwhile(i \u003c 5,\n    i println\n    i = i + 1\n)\n// Prints 0, 1, 2, 3, 4\n\n// while returns nil by default\nresult := while(false, \"Never runs\")\nresult println  // nil\n\n// Infinite loops\nwhile(true,\n    input := File standardInput readLine\n    if(input == \"quit\", break)\n    (\"You said: \" .. input) println\n)\n```\n\n## The for Loop\n\nThe `for` method provides a counting loop:\n\n```io\n// Basic for loop\nfor(i, 1, 5,\n    i println\n)\n// Prints 1, 2, 3, 4, 5\n\n// With step\nfor(i, 0, 10, 2,\n    i println\n)\n// Prints 0, 2, 4, 6, 8, 10\n\n// Backward\nfor(i, 5, 1,\n    i println\n)\n// Prints 5, 4, 3, 2, 1\n\n// for can return values\nsum := 0\nfor(i, 1, 100,\n    sum = sum + i\n)\nsum println  // 5050\n```\n\n## The loop Method\n\nIo provides a `loop` method for infinite loops:\n\n```io\ncount := 0\nloop(\n    count = count + 1\n    if(count > 10, break)\n    count println\n)\n\n// Equivalent to while(true, ...)\n```\n\n## break and continue\n\nThese work like in other languages, but they're methods too:\n\n```io\n// break exits the loop\nfor(i, 1, 10,\n    if(i == 5, break)\n    i println\n)\n// Prints 1, 2, 3, 4\n\n// continue skips to next iteration\nfor(i, 1, 10,\n    if(i % 2 == 0, continue)\n    i println\n)\n// Prints 1, 3, 5, 7, 9\n\n// break can return a value\nresult := for(i, 1, 100,\n    if(i * i > 50, break(i))\n)\nresult println  // 8 (first i where i*i > 50)\n```\n\n## The repeat Method\n\nA simpler counting mechanism:\n\n```io\n5 repeat(\"Hello\" println)\n// Prints \"Hello\" 5 times\n\n// repeat with index\n5 repeat(i, \n    (\"Count: \" .. i) println\n)\n// Count: 0\n// Count: 1\n// Count: 2\n// Count: 3\n// Count: 4\n```\n\n## Creating Custom Control Structures\n\nSince control structures are just methods, you can create your own:\n\n```io\n// unless: opposite of if\nObject unless := method(condition, falseBlock,\n    if(condition not, falseBlock call)\n)\n\nunless(5 > 10,\n    \"5 is not greater than 10\" println\n)\n\n// until: opposite of while\nObject until := method(condition, body,\n    while(condition not, body)\n)\n\nx := 0\nuntil(x > 5,\n    x println\n    x = x + 1\n)\n\n// times: repeat n times with cleaner syntax\nNumber times := method(body,\n    for(i, 1, self, body)\n)\n\n3 times(\"Hello\" println)\n```\n\n## The elseif Pattern\n\nIo uses `elseif` for chained conditionals:\n\n```io\nscore := 85\n\nif(score >= 90) then(\n    \"A\" println\n) elseif(score >= 80) then(\n    \"B\" println\n) elseif(score >= 70) then(\n    \"C\" println\n) else(\n    \"F\" println\n)\n// Prints \"B\"\n\n// This is actually a chain of methods\n// if returns a special object when false\n// that object has elseif and else methods\n```\n\n## Switch-like Behavior\n\nIo doesn't have a switch statement, but you can build one:\n\n```io\nObject switch := method(value,\n    self switchValue := value\n    self\n)\n\nObject case := method(testValue, action,\n    if(switchValue == testValue,\n        action call\n        self switchMatched := true\n    )\n    self\n)\n\nObject default := method(action,\n    if(hasSlot(\"switchMatched\") not,\n        action call\n    )\n    self\n)\n\n// Usage\nday := \"Tuesday\"\n\nswitch(day) case(\"Monday\", \n    \"Start of the week\" println\n) case(\"Tuesday\",\n    \"Second day\" println\n) case(\"Friday\",\n    \"TGIF!\" println\n) default(\n    \"Regular day\" println\n)\n// Prints \"Second day\"\n```\n\n## Pattern Matching\n\nBuild more sophisticated matching:\n\n```io\nObject match := method(\n    self matchValue := call evalArgAt(0)\n    self matchContext := call sender\n    self\n)\n\nObject when := method(pattern, action,\n    if(hasSlot(\"matchFound\") not,\n        matched := false\n        \n        // Check different pattern types\n        if(pattern type == \"Block\",\n            matched = pattern call(matchValue),\n            matched = (pattern == matchValue)\n        )\n        \n        if(matched,\n            self matchResult := action call(matchValue)\n            self matchFound := true\n        )\n    )\n    self\n)\n\nObject otherwise := method(action,\n    if(hasSlot(\"matchFound\") not,\n        self matchResult := action call(matchValue)\n    )\n    matchResult\n)\n\n// Usage\nresult := match(x) when(\n    block(v, v \u003c 0), \n    method(v, \"negative\")\n) when(\n    0,\n    method(v, \"zero\")\n) when(\n    block(v, v > 0),\n    method(v, \"positive\")\n) otherwise(\n    method(v, \"unknown\")\n)\n```\n\n## Iterating Over Collections\n\nCollections have their own iteration methods:\n\n```io\n// List iteration\nlist(1, 2, 3) foreach(item,\n    item println\n)\n\n// With index\nlist(\"a\", \"b\", \"c\") foreach(i, item,\n    (i .. \": \" .. item) println\n)\n// 0: a\n// 1: b\n// 2: c\n\n// Map iteration\nmap := Map clone\nmap atPut(\"name\", \"Alice\")\nmap atPut(\"age\", 30)\n\nmap foreach(key, value,\n    (key .. \" = \" .. value) println\n)\n// name = Alice\n// age = 30\n```\n\n## Functional Control Flow\n\nIo supports functional programming patterns:\n\n```io\n// map: transform each element\nsquares := list(1, 2, 3, 4) map(x, x * x)\nsquares println  // list(1, 4, 9, 16)\n\n// select: filter elements\nevens := list(1, 2, 3, 4, 5, 6) select(x, x % 2 == 0)\nevens println  // list(2, 4, 6)\n\n// detect: find first matching element\nfirst_big := list(1, 3, 5, 7, 9) detect(x, x > 5)\nfirst_big println  // 7\n\n// reduce: aggregate elements\nsum := list(1, 2, 3, 4, 5) reduce(+)\nsum println  // 15\n\nproduct := list(1, 2, 3, 4) reduce(a, b, a * b)\nproduct println  // 24\n```\n\n## Lazy Evaluation Control\n\nCreate control structures with lazy evaluation:\n\n```io\nObject lazyIf := method(\n    condition := call argAt(0)\n    trueBlock := call argAt(1)\n    falseBlock := call argAt(2)\n    \n    if(condition doInContext(call sender),\n        trueBlock doInContext(call sender),\n        if(falseBlock,\n            falseBlock doInContext(call sender)\n        )\n    )\n)\n\n// Both condition and blocks are lazy\nx := 5\nlazyIf(x > 3 and computeExpensive(),\n    \"True branch\" println,\n    \"False branch\" println\n)\n```\n\n## Exception Handling as Control Flow\n\nIo's `try` is also a control flow method:\n\n```io\ntry(\n    // Code that might fail\n    riskyOperation()\n) catch(Exception,\n    \"An error occurred\" println\n)\n\n// try-catch-finally pattern\nresult := try(\n    file := File with(\"data.txt\") openForReading\n    file contents\n) catch(Exception, e,\n    (\"Error: \" .. e message) println\n    nil\n) finally(\n    if(file, file close)\n)\n```\n\n## Performance Considerations\n\nSince control structures are methods, they have overhead:\n\n```io\n// Method-based loop (slower)\ni := 0\nwhile(i \u003c 1000000,\n    i = i + 1\n)\n\n// But you can't really avoid it in Io\n// The language is optimized for expressiveness over speed\n```\n\n## Advanced: Coroutine-based Control\n\nIo's coroutines enable advanced control flow:\n\n```io\n// Generator pattern\nGenerator := Object clone\nGenerator init := method(\n    self coro := Coroutine currentCoroutine\n    self\n)\n\nGenerator yield := method(value,\n    coro pause(value)\n)\n\nGenerator fibonacci := method(\n    a := 0\n    b := 1\n    loop(\n        yield(a)\n        temp := a + b\n        a = b\n        b = temp\n    )\n)\n\n// Usage\ngen := Generator clone\nfib := gen @fibonacci  // @ runs in new coroutine\n\n10 repeat(\n    fib resume println\n)\n// 0, 1, 1, 2, 3, 5, 8, 13, 21, 34\n```\n\n## Common Patterns\n\n### Early Return Pattern\n\n```io\nObject findFirst := method(list, condition,\n    list foreach(item,\n        if(condition call(item),\n            return item\n        )\n    )\n    nil\n)\n\nresult := findFirst(list(1, 2, 3, 4, 5), \n    block(x, x > 3)\n)\nresult println  // 4\n```\n\n### Guard Clause Pattern\n\n```io\nprocessData := method(data,\n    if(data isNil, return \"No data\")\n    if(data size == 0, return \"Empty data\")\n    if(data size > 1000, return \"Too much data\")\n    \n    // Process data\n    \"Processed\" return\n)\n```\n\n### Loop with State\n\n```io\nObject loopWithState := method(initial, condition, update, body,\n    state := initial\n    while(condition call(state),\n        body call(state)\n        state = update call(state)\n    )\n    state\n)\n\n// Sum squares until sum > 100\nresult := loopWithState(\n    list(0, 1),  // [sum, n]\n    block(state, state at(0) \u003c= 100),\n    block(state, list(state at(0) + state at(1) squared, state at(1) + 1)),\n    block(state, (\"n=\" .. state at(1) .. \" sum=\" .. state at(0)) println)\n)\n```\n\n## Debugging Control Flow\n\n```io\nObject trace := method(label,\n    (label .. \" - evaluating\") println\n    self\n)\n\nObject debugIf := method(condition, trueBlock, falseBlock,\n    \"Evaluating condition...\" println\n    result := condition\n    (\"Condition is: \" .. result) println\n    \n    if(result,\n        \"Taking true branch\" println\n        trueBlock,\n        \"Taking false branch\" println\n        falseBlock\n    )\n)\n\nx := 5\ndebugIf(x trace(\"x\") > trace(\"3\") 3,\n    \"Greater\" println,\n    \"Lesser\" println\n)\n```\n\n## Exercises\n\n1. **do-while Loop**: Implement a `doWhile` method that executes the body at least once.\n\n2. **for-each with Break**: Create a `forEachBreakable` that allows breaking with a return value.\n\n3. **Retry Logic**: Build a `retry` control structure that retries an operation n times on failure.\n\n4. **Parallel If**: Create a `parallelIf` that evaluates both branches concurrently and returns the first to complete.\n\n5. **State Machine**: Implement a state machine DSL using custom control structures.\n\n## Real-World Example: Retry with Backoff\n\n```io\nObject retryWithBackoff := method(maxAttempts, baseDelay, operation,\n    attempt := 1\n    lastError := nil\n    \n    while(attempt \u003c= maxAttempts,\n        try(\n            return operation call(attempt)\n        ) catch(Exception, e,\n            lastError = e\n            if(attempt \u003c maxAttempts,\n                delay := baseDelay * (2 pow(attempt - 1))\n                (\"Attempt \" .. attempt .. \" failed, waiting \" .. delay .. \"ms\") println\n                System sleep(delay / 1000)\n            )\n        )\n        attempt = attempt + 1\n    )\n    \n    Exception raise(\"Failed after \" .. maxAttempts .. \" attempts: \" .. lastError message)\n)\n\n// Usage\nresult := retryWithBackoff(3, 100,\n    block(attempt,\n        (\"Trying attempt \" .. attempt) println\n        if(Random value \u003c 0.7,\n            Exception raise(\"Random failure\"),\n            \"Success!\"\n        )\n    )\n)\n```\n\n## Conclusion\n\nIo's approach to control flow—implementing everything as methods rather than special syntax—is both radical and elegant. It demonstrates the power of Io's uniform message-passing model: when everything is a message, even fundamental programming constructs become malleable and extensible.\n\nThis flexibility allows you to:\n- Create domain-specific control structures\n- Implement new programming paradigms\n- Debug and trace control flow\n- Understand exactly how your program executes\n\nThe cost is performance and perhaps initial unfamiliarity. But the benefit is a deep understanding of control flow and the ability to shape the language to your needs rather than being constrained by built-in constructs.\n"},"../_index.json":{"ok":true,"status":200,"content":"{\n  \"title\": \"The Io Programming Language\",\n  \"topTitle\": \"Io\",\n  \"subtitle\": \"A comprehensive guide to prototype-based programming with Io.\",\n  \"content\": [\n    {\n      \"type\": \"ContentText\",\n      \"content\": \"This book provides an in-depth exploration of the Io programming language, designed for experienced programmers who want to understand prototype-based object-oriented programming. Through detailed comparisons with mainstream languages like JavaScript, Python, Ruby, and Java, readers will gain practical insights into Io's unique paradigm.\"\n    },\n    {\n      \"type\": \"ContentCards\",\n      \"title\": \"Chapters\",\n      \"columns\": 2,\n      \"items\": [\n        \"Preface\",\n        \"Introduction\",\n        \"Getting-Started\",\n        \"Everything-is-an-Object\",\n        \"Prototypes-Not-Classes\",\n        \"Messages-and-Slots\",\n        \"Cloning-and-Inheritance\",\n        \"Control-Flow\",\n        \"Collections\",\n        \"Blocks-and-Closures\",\n        \"Exceptions\",\n        \"Metaprogramming\",\n        \"Concurrency\",\n        \"Domain-Specific-Languages\",\n        \"C-Integration\",\n        \"Real-World-Patterns\",\n        \"Case-Studies\",\n        \"Ecosystem-and-Libraries\",\n        \"Conclusion\"\n      ]\n    }\n  ]\n}\n"},"../Collections/_index.json":{"ok":false,"status":404},"../Collections/_index.md":{"ok":true,"status":200,"content":"---\ntitle: Collections\ntopTitle: Io\nsubtitle: \"Lists, Maps, and Sequences: Io's core data structures and how to extend them.\"\nnextSectionLink: true\n---\n\nCollections are fundamental to any programming language. Io provides three main collection types: List (ordered, indexed), Map (key-value pairs), and Sequence (strings). This chapter explores these collections, their methods, and how to create custom collection types.\n\n## Lists: Ordered Collections\n\nLists in Io are dynamic arrays that can hold any type of object:\n\n```io\n// Creating lists\nempty := list()\nnumbers := list(1, 2, 3, 4, 5)\nmixed := list(\"hello\", 42, true, Object clone)\n\n// Lists are objects\nnumbers type println  // List\n\n// Basic operations\nnumbers size println      // 5\nnumbers isEmpty println   // false\nnumbers first println     // 1\nnumbers last println      // 5\nnumbers at(2) println     // 3 (zero-indexed)\n```\n\n### List Manipulation\n\n```io\nfruits := list(\"apple\", \"banana\")\n\n// Adding elements\nfruits append(\"orange\")\nfruits prepend(\"grape\")\nfruits println  // list(grape, apple, banana, orange)\n\n// Insert at position\nfruits atInsert(2, \"mango\")\nfruits println  // list(grape, apple, mango, banana, orange)\n\n// Removing elements\nfruits remove(\"mango\")\nfruits removeAt(0)\nfruits pop  // Removes and returns last element\nfruits println  // list(apple, banana)\n\n// Multiple operations\nfruits appendSeq(list(\"kiwi\", \"peach\"))\nfruits println  // list(apple, banana, kiwi, peach)\n```\n\n### List Iteration\n\n```io\nnumbers := list(1, 2, 3, 4, 5)\n\n// Basic iteration\nnumbers foreach(n,\n    n println\n)\n\n// With index\nnumbers foreach(i, n,\n    (i .. \": \" .. n) println\n)\n\n// Reverse iteration\nnumbers reverseForEach(n,\n    n println\n)\n```\n\n### Functional Operations\n\n```io\nnumbers := list(1, 2, 3, 4, 5)\n\n// Map: transform each element\nsquared := numbers map(x, x * x)\nsquared println  // list(1, 4, 9, 16, 25)\n\n// Select: filter elements\nevens := numbers select(x, x % 2 == 0)\nevens println  // list(2, 4)\n\n// Reject: inverse of select\nodds := numbers reject(x, x % 2 == 0)\nodds println  // list(1, 3, 5)\n\n// Detect: find first match\nfirstEven := numbers detect(x, x % 2 == 0)\nfirstEven println  // 2\n\n// Reduce: aggregate\nsum := numbers reduce(+)\nsum println  // 15\n\n// Custom reduce\nproduct := numbers reduce(a, b, a * b)\nproduct println  // 120\n\n// Any/all predicates\nnumbers contains(3) println  // true\nnumbers containsAll(list(2, 4)) println  // true\nnumbers containsAny(list(10, 3)) println  // true\n```\n\n### List Slicing and Manipulation\n\n```io\nletters := list(\"a\", \"b\", \"c\", \"d\", \"e\")\n\n// Slicing\nletters slice(1, 3) println  // list(b, c, d)\nletters slice(2) println     // list(c, d, e)\n\n// Copying\ncopy := letters copy\ncopy atPut(0, \"z\")\nletters println  // list(a, b, c, d, e) - unchanged\ncopy println     // list(z, b, c, d, e)\n\n// Sorting\nnumbers := list(3, 1, 4, 1, 5, 9)\nnumbers sort println  // list(1, 1, 3, 4, 5, 9)\n\n// Custom sort\npeople := list(\n    Object clone do(name := \"Alice\"; age := 30),\n    Object clone do(name := \"Bob\"; age := 25),\n    Object clone do(name := \"Charlie\"; age := 35)\n)\n\npeople sortBy(block(p, p age)) foreach(p,\n    (p name .. \": \" .. p age) println\n)\n// Bob: 25\n// Alice: 30\n// Charlie: 35\n```\n\n## Maps: Key-Value Stores\n\nMaps (also called dictionaries or hash tables) store key-value pairs:\n\n```io\n// Creating maps\nempty := Map clone\nperson := Map clone atPut(\"name\", \"Alice\") atPut(\"age\", 30)\n\n// Alternative creation\nperson := Map with(\n    \"name\", \"Alice\",\n    \"age\", 30,\n    \"city\", \"New York\"\n)\n\n// Accessing values\nperson at(\"name\") println     // Alice\nperson at(\"missing\") println  // nil\nperson at(\"missing\", \"default\") println  // default\n\n// Setting values\nperson atPut(\"age\", 31)\nperson atPut(\"email\", \"alice@example.com\")\n\n// Checking keys\nperson hasKey(\"name\") println  // true\nperson hasKey(\"phone\") println  // false\n```\n\n### Map Operations\n\n```io\nmap := Map with(\"a\", 1, \"b\", 2, \"c\", 3)\n\n// Get all keys and values\nmap keys println    // list(a, b, c)\nmap values println  // list(1, 2, 3)\n\n// Size and emptiness\nmap size println      // 3\nmap isEmpty println   // false\n\n// Removing entries\nmap removeAt(\"b\")\nmap println  // Map_0x...: a=1, c=3\n\n// Iteration\nmap foreach(key, value,\n    (key .. \" => \" .. value) println\n)\n\n// Merging maps\nother := Map with(\"c\", 30, \"d\", 4)\nmap merge(other)\nmap println  // a=1, c=30, d=4 (note c was overwritten)\n```\n\n### Maps as Objects\n\nMaps can act like objects with dynamic properties:\n\n```io\n// Create object-like map\nobj := Map clone\nobj atPut(\"greet\", method(name,\n    (\"Hello, \" .. name .. \"!\") println\n))\nobj atPut(\"x\", 10)\nobj atPut(\"y\", 20)\n\n// Use like object (sort of)\nobj at(\"greet\") call(\"World\")  // Hello, World!\nobj at(\"x\") println  // 10\n```\n\n## Sequences: String Handling\n\nSequences are Io's strings, but they're mutable and act like byte arrays:\n\n```io\ntext := \"Hello, World!\"\n\n// Basic operations\ntext size println          // 13\ntext at(0) println        // 72 (ASCII 'H')\ntext at(0) asCharacter println  // H\n\n// Slicing\ntext slice(0, 5) println   // Hello\ntext slice(7) println      // World!\n\n// Searching\ntext findSeq(\"World\") println  // 7 (index)\ntext containsSeq(\"Hello\") println  // true\ntext beginsWithSeq(\"Hello\") println  // true\ntext endsWithSeq(\"!\") println  // true\n```\n\n### String Manipulation\n\n```io\ntext := \"  Hello, World!  \"\n\n// Trimming\ntext strip println         // \"Hello, World!\"\ntext lstrip println        // \"Hello, World!  \"\ntext rstrip println        // \"  Hello, World!\"\n\n// Case conversion\n\"hello\" upper println      // HELLO\n\"WORLD\" lower println      // world\n\"hello world\" asCapitalized println  // Hello world\n\n// Replacement\n\"hello world\" replaceSeq(\"world\", \"Io\") println  // hello Io\n\"abcabc\" replaceFirstSeq(\"a\", \"X\") println  // Xbcabc\n\n// Splitting and joining\nwords := \"apple,banana,orange\" split(\",\")\nwords println  // list(apple, banana, orange)\n\nwords join(\"-\") println  // apple-banana-orange\n```\n\n### String Building\n\n```io\n// Inefficient string concatenation\nresult := \"\"\nfor(i, 1, 1000,\n    result = result .. i .. \", \"\n)\n\n// Better: use a list\nparts := list()\nfor(i, 1, 1000,\n    parts append(i)\n)\nresult := parts join(\", \")\n\n// Or use Sequence's mutable nature\nseq := Sequence clone\nfor(i, 1, 100,\n    seq appendSeq(i asString) appendSeq(\", \")\n)\n```\n\n### Regular Expressions\n\nIo has built-in regex support:\n\n```io\ntext := \"The year 2024 has 365 days\"\n\n// Find matches\ntext findRegex(\"\\\\d+\") println  // MatchResult...\ntext allMatchesOfRegex(\"\\\\d+\") foreach(match,\n    match println  // 2024, 365\n)\n\n// Replace with regex\ntext replaceAllRegex(\"\\\\d+\", \"N\") println  // The year N has N days\n\n// Capture groups\nemail := \"user@example.com\"\nmatch := email matchesOfRegex(\"(\\\\w+)@(\\\\w+\\\\.\\\\w+)\") \nif(match,\n    match at(1) println  // user\n    match at(2) println  // example.com\n)\n```\n\n## Creating Custom Collections\n\n### Stack Implementation\n\n```io\nStack := List clone\nStack push := method(item,\n    self append(item)\n)\n\nStack pop := method(\n    if(size > 0,\n        removeAt(size - 1),\n        nil\n    )\n)\n\nStack peek := method(\n    if(size > 0,\n        at(size - 1),\n        nil\n    )\n)\n\n// Usage\nstack := Stack clone\nstack push(1) push(2) push(3)\nstack pop println   // 3\nstack peek println  // 2\nstack pop println   // 2\nstack pop println   // 1\n```\n\n### Queue Implementation\n\n```io\nQueue := Object clone\nQueue init := method(\n    self items := list()\n    self\n)\n\nQueue enqueue := method(item,\n    items append(item)\n    self\n)\n\nQueue dequeue := method(\n    if(items size > 0,\n        items removeAt(0),\n        nil\n    )\n)\n\nQueue isEmpty := method(items isEmpty)\nQueue size := method(items size)\n\n// Usage\nqueue := Queue clone init\nqueue enqueue(\"a\") enqueue(\"b\") enqueue(\"c\")\nqueue dequeue println  // a\nqueue dequeue println  // b\nqueue size println     // 1\n```\n\n### Set Implementation\n\n```io\nSet := Object clone\nSet init := method(\n    self items := Map clone\n    self\n)\n\nSet add := method(item,\n    items atPut(item asString, item)\n    self\n)\n\nSet remove := method(item,\n    items removeAt(item asString)\n    self\n)\n\nSet contains := method(item,\n    items hasKey(item asString)\n)\n\nSet union := method(other,\n    result := Set clone init\n    items foreach(k, v, result add(v))\n    other items foreach(k, v, result add(v))\n    result\n)\n\nSet intersection := method(other,\n    result := Set clone init\n    items foreach(k, v,\n        if(other contains(v), result add(v))\n    )\n    result\n)\n\n// Usage\nset1 := Set clone init add(1) add(2) add(3)\nset2 := Set clone init add(2) add(3) add(4)\n\nset1 contains(2) println  // true\nunion := set1 union(set2)\nintersection := set1 intersection(set2)\n```\n\n## Advanced Collection Patterns\n\n### Lazy Evaluation\n\n```io\nLazyList := Object clone\nLazyList init := method(generator,\n    self generator := generator\n    self cache := list()\n    self\n)\n\nLazyList at := method(index,\n    while(cache size \u003c= index,\n        cache append(generator call(cache size))\n    )\n    cache at(index)\n)\n\nLazyList take := method(n,\n    result := list()\n    for(i, 0, n - 1,\n        result append(self at(i))\n    )\n    result\n)\n\n// Infinite fibonacci sequence\nfibGen := LazyList clone init(block(n,\n    if(n \u003c 2, n, self at(n - 1) + self at(n - 2))\n))\n\nfibGen take(10) println  // list(0, 1, 1, 2, 3, 5, 8, 13, 21, 34)\n```\n\n### Collection Pipeline\n\n```io\n// Method chaining for data processing\ndata := list(1, 2, 3, 4, 5, 6, 7, 8, 9, 10)\n\nresult := data select(x, x % 2 == 0) \\\n    map(x, x * x) \\\n    select(x, x > 10) \\\n    reduce(+)\n\nresult println  // 120 (16 + 36 + 64)\n\n// Custom pipeline\nList pipeline := method(\n    Pipeline clone setList(self)\n)\n\nPipeline := Object clone\nPipeline setList := method(list,\n    self list := list\n    self\n)\n\nPipeline where := method(predicate,\n    self list = list select(predicate)\n    self\n)\n\nPipeline transform := method(mapper,\n    self list = list map(mapper)\n    self\n)\n\nPipeline aggregate := method(reducer,\n    list reduce(reducer)\n)\n\n// Usage\nnumbers := list(1, 2, 3, 4, 5)\ntotal := numbers pipeline \\\n    where(x, x % 2 == 0) \\\n    transform(x, x * x) \\\n    aggregate(+)\n\ntotal println  // 20 (4 + 16)\n```\n\n### Nested Collections\n\n```io\n// Matrix as list of lists\nmatrix := list(\n    list(1, 2, 3),\n    list(4, 5, 6),\n    list(7, 8, 9)\n)\n\n// Access element\nmatrix at(1) at(2) println  // 6\n\n// Transpose\ntranspose := method(matrix,\n    rows := matrix size\n    cols := matrix at(0) size\n    result := list()\n    \n    for(c, 0, cols - 1,\n        col := list()\n        for(r, 0, rows - 1,\n            col append(matrix at(r) at(c))\n        )\n        result append(col)\n    )\n    result\n)\n\ntranspose(matrix) println\n// list(list(1, 4, 7), list(2, 5, 8), list(3, 6, 9))\n```\n\n## Performance Considerations\n\n```io\n// List operations performance\nlist := List clone\n\n// O(1) operations\nlist append(item)      // Constant time\nlist at(index)         // Constant time\nlist size              // Constant time\n\n// O(n) operations\nlist indexOf(item)     // Linear search\nlist contains(item)    // Linear search\nlist remove(item)      // Linear search + shift\n\n// Map operations are generally O(1)\nmap := Map clone\nmap atPut(key, value)  // Constant average\nmap at(key)            // Constant average\nmap removeAt(key)      // Constant average\n\n// Choose the right collection for your needs\n```\n\n## Collection Serialization\n\n```io\n// JSON serialization\nlist := list(1, 2, 3, Map with(\"name\", \"Alice\"))\njson := list asJson\njson println  // [1,2,3,{\"name\":\"Alice\"}]\n\n// Deserialize\nrestored := json parseJson\nrestored println\n\n// Custom serialization\nCollection := Object clone\nCollection serialize := method(\n    result := list()\n    self foreach(item,\n        if(item hasSlot(\"serialize\"),\n            result append(item serialize),\n            result append(item asString)\n        )\n    )\n    result join(\"|\")\n)\n```\n\n## Common Pitfalls\n\n### Shared References\n\n```io\n// PROBLEM: Shared reference\noriginal := list(1, 2, 3)\ncopy := original  // Not a copy!\ncopy append(4)\noriginal println  // list(1, 2, 3, 4) - modified!\n\n// SOLUTION: Use copy\noriginal := list(1, 2, 3)\ncopy := original copy\ncopy append(4)\noriginal println  // list(1, 2, 3) - unchanged\n```\n\n### Iterator Invalidation\n\n```io\n// PROBLEM: Modifying while iterating\nlist := list(1, 2, 3, 4, 5)\nlist foreach(item,\n    if(item % 2 == 0,\n        list remove(item)  // Dangerous!\n    )\n)\n\n// SOLUTION: Use select/reject or iterate on copy\nlist := list(1, 2, 3, 4, 5)\nlist = list reject(item, item % 2 == 0)\n```\n\n## Exercises\n\n1. **Circular Buffer**: Implement a fixed-size circular buffer that overwrites old elements.\n\n2. **MultiMap**: Create a map that can store multiple values per key.\n\n3. **Sorted List**: Implement a list that maintains sorted order on insertion.\n\n4. **Tree Structure**: Build a tree collection with parent-child relationships.\n\n5. **Graph**: Implement a graph data structure with nodes and edges.\n\n## Real-World Example: Todo List with Tags\n\n```io\nTodoItem := Object clone\nTodoItem init := method(description,\n    self description := description\n    self tags := Set clone init\n    self completed := false\n    self\n)\n\nTodoList := Object clone\nTodoList init := method(\n    self items := list()\n    self\n)\n\nTodoList add := method(description,\n    item := TodoItem clone init(description)\n    items append(item)\n    item\n)\n\nTodoList taggedWith := method(tag,\n    items select(item, item tags contains(tag))\n)\n\nTodoList pending := method(\n    items select(item, item completed not)\n)\n\nTodoList complete := method(description,\n    item := items detect(i, i description == description)\n    if(item, item completed = true)\n    self\n)\n\n// Usage\ntodos := TodoList clone init\n\ntodos add(\"Write documentation\") tags add(\"work\") add(\"writing\")\ntodos add(\"Fix bugs\") tags add(\"work\") add(\"urgent\")\ntodos add(\"Buy groceries\") tags add(\"personal\")\n\ntodos taggedWith(\"urgent\") foreach(item,\n    item description println\n)\n// Fix bugs\n\ntodos complete(\"Buy groceries\")\ntodos pending foreach(item,\n    item description println\n)\n// Write documentation\n// Fix bugs\n```\n\n## Conclusion\n\nIo's collections—List, Map, and Sequence—provide a solid foundation for data manipulation. They're all objects, following Io's uniform object model, and support functional programming patterns like map, select, and reduce.\n\nThe real power comes from Io's flexibility: you can add methods to existing collection types, create custom collections that integrate seamlessly, and build sophisticated data structures using simple object composition. Understanding collections deeply is essential for effective Io programming, as they form the backbone of most data processing tasks.\n"}}</script>
+</body>
+</html>

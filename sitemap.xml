@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>/</loc></url>
+  <url><loc>/Blocks-and-Closures/</loc></url>
+  <url><loc>/C-Integration/</loc></url>
+  <url><loc>/Case-Studies/</loc></url>
+  <url><loc>/Cloning-and-Inheritance/</loc></url>
+  <url><loc>/Collections/</loc></url>
+  <url><loc>/Conclusion/</loc></url>
+  <url><loc>/Concurrency/</loc></url>
+  <url><loc>/Control-Flow/</loc></url>
+  <url><loc>/Domain-Specific-Languages/</loc></url>
+  <url><loc>/Ecosystem-and-Libraries/</loc></url>
+  <url><loc>/Everything-is-an-Object/</loc></url>
+  <url><loc>/Exceptions/</loc></url>
+  <url><loc>/Getting-Started/</loc></url>
+  <url><loc>/Introduction/</loc></url>
+  <url><loc>/Messages-and-Slots/</loc></url>
+  <url><loc>/Metaprogramming/</loc></url>
+  <url><loc>/Preface/</loc></url>
+  <url><loc>/Prototypes-Not-Classes/</loc></url>
+  <url><loc>/Real-World-Patterns/</loc></url>
+  <url><loc>/llms.txt</loc></url>
+  <url><loc>/llms-full.txt</loc></url>
+</urlset>
