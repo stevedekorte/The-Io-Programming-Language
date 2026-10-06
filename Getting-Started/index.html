@@ -9,7 +9,7 @@
   <meta name="description" content="Install Io, explore the REPL, and write your first programs.">
 </head>
 <body>
-<div class="page loaded"><div class="header"><div><h1>Getting Started with Io</h1><a class="back-link" href="../index.html">&larr; The Io Programming Language</a></div><a class="brand" href="../index.html">Io</a></div><p class="intro">Install Io, explore the REPL, and write your first programs.</p><nav class="toc"><ul><li><a href="#installing-io">Installing Io</a></li><li><a href="#the-repl-your-io-playground">The REPL: Your Io Playground</a></li><li><a href="#your-first-io-program">Your First Io Program</a></li><li><a href="#understanding-basic-syntax">Understanding Basic Syntax</a></li><li><a href="#variables-and-assignment">Variables and Assignment</a></li><li><a href="#control-flow">Control Flow</a></li><li><a href="#creating-objects">Creating Objects</a></li><li><a href="#methods">Methods</a></li><li><a href="#lists-and-iteration">Lists and Iteration</a></li><li><a href="#working-with-files">Working with Files</a></li><li><a href="#a-more-complete-example">A More Complete Example</a></li><li><a href="#key-takeaways">Key Takeaways</a></li><li><a href="#exercises">Exercises</a></li><li><a href="#whats-different">What's Different?</a></li><li><a href="#moving-forward">Moving Forward</a></li></ul></nav><div class="section"><div class="section-body"><p>The best way to understand Io is to use it. In this chapter, we'll install Io, explore its REPL (Read-Eval-Print Loop), and write our first programs. By the end, you'll have a feel for Io's syntax and flow.</p></div></div><h2 id="installing-io">Installing Io</h2><div class="section"><div class="section-body"><h3 id="macos">macOS</h3><p>If you're on macOS with Homebrew, installation is simple:</p><pre><code>brew install io</code></pre><h3 id="linux">Linux</h3><p>On most Linux distributions, you'll need to build from source:</p><pre><code>git clone https://github.com/IoLanguage/io.git
+<div class="page loaded"><div class="header"><div><h1>Getting Started with Io</h1><a class="back-link" href="../index.html">&larr; The Io Programming Language</a></div><a class="brand" href="../index.html">Io</a></div><div class="intro"><p>Install Io, explore the REPL, and write your first programs.</p></div><nav class="toc"><ul><li><a href="#installing-io">Installing Io</a></li><li><a href="#the-repl-your-io-playground">The REPL: Your Io Playground</a></li><li><a href="#your-first-io-program">Your First Io Program</a></li><li><a href="#understanding-basic-syntax">Understanding Basic Syntax</a></li><li><a href="#variables-and-assignment">Variables and Assignment</a></li><li><a href="#control-flow">Control Flow</a></li><li><a href="#creating-objects">Creating Objects</a></li><li><a href="#methods">Methods</a></li><li><a href="#lists-and-iteration">Lists and Iteration</a></li><li><a href="#working-with-files">Working with Files</a></li><li><a href="#a-more-complete-example">A More Complete Example</a></li><li><a href="#key-takeaways">Key Takeaways</a></li><li><a href="#exercises">Exercises</a></li><li><a href="#whats-different">What's Different?</a></li><li><a href="#moving-forward">Moving Forward</a></li></ul></nav><div class="section"><div class="section-body"><p>The best way to understand Io is to use it. In this chapter, we'll install Io, explore its REPL (Read-Eval-Print Loop), and write our first programs. By the end, you'll have a feel for Io's syntax and flow.</p></div></div><h2 id="installing-io">Installing Io</h2><div class="section"><div class="section-body"><h3 id="macos">macOS</h3><p>If you're on macOS with Homebrew, installation is simple:</p><pre><code>brew install io</code></pre><h3 id="linux">Linux</h3><p>On most Linux distributions, you'll need to build from source:</p><pre><code>git clone https://github.com/IoLanguage/io.git
 cd io
 mkdir build
 cd build
@@ -23,22 +23,22 @@ Io&gt; "Hello, World!" println
 Hello, World!
 ==&gt; Hello, World!
 Io&gt; ^C</code></pre></div></div><h2 id="the-repl-your-io-playground">The REPL: Your Io Playground</h2><div class="section"><div class="section-body"><p>Io's REPL is where you'll spend most of your learning time. Unlike compiled languages where you write, compile, and run, Io lets you experiment immediately.</p><p>Start the REPL by typing <code>io</code>:</p><pre><code>$ io
-Io&gt;</code></pre><p>The prompt <code>Io></code> indicates Io is ready for input. Let's explore:</p><pre><code>Io&gt; 2 + 2
+Io&gt;</code></pre><p>The prompt <code>Io&gt;</code> indicates Io is ready for input. Let's explore:</p><pre><code>Io&gt; 2 + 2
 ==&gt; 4
 
 Io&gt; "Hello" .. " " .. "World"
 ==&gt; Hello World
 
 Io&gt; 10 &gt; 5
-==&gt; true</code></pre><p>Notice the <code>==></code> prefix? That shows the return value of your expression. Everything in Io returns a value.</p><h3 id="repl-tips">REPL Tips</h3><ol><li><strong>Multi-line input</strong>: The REPL detects incomplete expressions:</li></ol><pre><code>Io&gt; if(true,
+==&gt; true</code></pre><p>Notice the <code>==&gt;</code> prefix? That shows the return value of your expression. Everything in Io returns a value.</p><h3 id="repl-tips">REPL Tips</h3><ol><li><strong>Multi-line input</strong>: The REPL detects incomplete expressions:</li></ol><pre><code>Io&gt; if(true,
 ...     "yes" println,
 ...     "no" println
 ... )
 yes
-==&gt; yes</code></pre><ol><li><strong>Previous result</strong>: Use <code>_</code> to reference the last result:</li></ol><pre><code>Io&gt; 100 * 2
+==&gt; yes</code></pre><ol start="2"><li><strong>Previous result</strong>: Use <code>_</code> to reference the last result:</li></ol><pre><code>Io&gt; 100 * 2
 ==&gt; 200
 Io&gt; _ + 50
-==&gt; 250</code></pre><ol><li><strong>Getting help</strong>: The REPL has built-in documentation:</li></ol><pre><code>Io&gt; Lobby slotNames
+==&gt; 250</code></pre><ol start="3"><li><strong>Getting help</strong>: The REPL has built-in documentation:</li></ol><pre><code>Io&gt; Lobby slotNames
 ==&gt; list(Protos, _, exit, forward, set_)
 
 Io&gt; Number slotNames sort
